@@ -1,1 +1,3 @@
-ACTATGGCACCTGCAC
+version https://git-lfs.github.com/spec/v1
+oid sha256:c124bb41b8205c9508ec9c55b4da5c838e461fc0685b64102bd52c924e8be7af
+size 18
