@@ -110,7 +110,10 @@ def Approx_Damerau_Hyyro(query, text, k, BEq):
         VN = D0 & (X)
 
 
-        
+    print(f"\n=== Iteration j={j}, ref='{text[j]}' ===")
+    print("Line 7  Eq: ", X1)
+    print("Line 8  Xv: ", X)
+    
     return scoreA
 
 
@@ -139,8 +142,8 @@ print ("Generate Damerau local edit distance score of pattern of length m matchi
 #t = "GTAGGCTTAAGGTTA"
 #p = "JAAAT"
 #t = "TAAAJ"
-p="AGTC"
-t="AAAATGCA"   
+p="TAA"
+t="AAAAA"   
 #p = 'MATCH'
 #t = 'REMACHINE' 
 
