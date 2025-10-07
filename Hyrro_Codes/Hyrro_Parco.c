@@ -7,8 +7,8 @@
 #define MAX_LENGTH (1 << 24)
 #define MAX_LINE_LENGTH (1 << 14)
 
-#define query_file "D:/download/College Life/Thesis/CSE2_Hyy-dra_Thesis/Resources/Testing/query_testDNA.fasta"
-#define reference_file "D:/download/College Life/Thesis/CSE2_Hyy-dra_Thesis/Resources/Testing/ref_testDNA.fasta"
+#define query_file "D:/download/College Life/Thesis/CSE2_Hyy-dra_Thesis/Resources/Queries/s_query_16.fasta"
+#define reference_file "D:/download/College Life/Thesis/CSE2_Hyy-dra_Thesis/Resources/References/ref_test2_multi[10]-1024.fasta"
 
 #define loope 10
 typedef uint64_t bitvector;
@@ -167,7 +167,7 @@ int main() {
             printf("Length of query(p) is %zu\n", strlen(query_seqs[q]));
             printf("Length of text(t) is %zu\n", strlen(reference_seqs[r]));
             printf("score:\n");
-            printf("%s\n", reference_seqs[r]);
+            //printf("%s\n", reference_seqs[r]);
             for (int i = 0; i < n; i++) {
                 printf("%d", scores[i]);
                 if (i < n - 1) printf(",");
