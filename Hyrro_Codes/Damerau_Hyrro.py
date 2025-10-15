@@ -139,8 +139,8 @@ print ("Generate Damerau local edit distance score of pattern of length m matchi
 #t = "GTAGGCTTAAGGTTA"
 #p = "JAAAT"
 #t = "TAAAJ"
-p="AGTC"        #query
-t="AAAATGCA"    #reference
+p="ACGTACGTACGT"        #query
+t="ACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGTACGT"    #reference
 #p = 'MATCH'
 #t = 'REMACHINE' 
 
