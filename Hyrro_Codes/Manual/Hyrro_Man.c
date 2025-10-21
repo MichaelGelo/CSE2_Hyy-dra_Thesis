@@ -7,20 +7,12 @@
 #define MAX_LENGTH (1 << 24)
 #define MAX_LINE_LENGTH (1 << 14)
 
-#define query_file "D:/download/College Life/Thesis/CSE2_Hyy-dra_Thesis/Resources/Testing/longquery64.fasta"
-#define reference_file "D:/download/College Life/Thesis/CSE2_Hyy-dra_Thesis/Resources/Testing/longref128.fasta"
+#define query_file "D:/download/College Life/Thesis/CSE2_Hyy-dra_Thesis/Resources/Testing/query_testDNA.fasta"
+#define reference_file "D:/download/College Life/Thesis/CSE2_Hyy-dra_Thesis/Resources/Testing/ref_testDNA.fasta"
 
 #define loope 10
 typedef uint64_t bitvector;
 
-FILE *out = NULL;  // global file pointer
-
-// ✅ macro defined here, before any functions
-#define LOG(fmt, ...) \
-    do { \
-        printf(fmt, ##__VA_ARGS__); \
-        if (out) fprintf(out, fmt, ##__VA_ARGS__); \
-    } while (0)
 char* read_file_into_string(const char* filename) {
     FILE* file = fopen(filename, "rb");
     if (!file) {
@@ -103,109 +95,45 @@ char** parse_fasta_file(const char *filename, int *num_sequences) {
     return sequences;
 }
 
-void print_bits(unsigned long long x, int m) {
-    char buffer[1024];  // enough for most cases (adjust if m > 1024)
-    int pos = 0;
-
-    for (int i = m - 1; i >= 0; i--) {
-        buffer[pos++] = (x & (1ULL << i)) ? '1' : '0';
-
-        // Add space after every 4 bits (but not after the last group)
-        if (i % 4 == 0 && i != 0) {
-            buffer[pos++] = ' ';
-        }
-    }
-    buffer[pos] = '\0';
-
-    LOG("%s", buffer);
-}
-
-
 
 int bit_vector_levenshtein(const char *query, const char *reference, int *scores) {
     int m = strlen(query);
     int n = strlen(reference);
     if (m > MAX_LENGTH || n > MAX_LENGTH) {
-       LOG("Error: Strings too long for this implementation!\n");
+        printf("Error: Strings too long for this implementation!\n");
         return -1;
     }
 
-    bitvector Pv = ~0ULL;   // line 4
-    bitvector Mv = 0;       // line 5
+    bitvector Pv = ~0ULL;
+    bitvector Mv = 0;
     bitvector Eq[256] = {0};
-    bitvector Ph = 0, Mh = 0, Xv = 0, Xh = 0, Xp = 0;
+    bitvector Ph, Mh, Xv, Xh, Xp = 0;
 
-    // preprocess Eq
     for (int i = 0; i < m; i++) {
         Eq[(unsigned char)query[i]] |= (1ULL << i);
     }
 
-    int score = m;          // line 3
+    int score = m;
 
     for (int j = 0; j < n; j++) {
-       LOG("=== Iteration j=%d (reference[%d] = '%c') ===\n", j+1, j+1, reference[j]);
-
-        bitvector Eqj = Eq[(unsigned char)reference[j]];
-       LOG("Line 7  Eq: "); print_bits(Eqj, m);LOG("\n");
-       LOG("Line 7  Pv: "); print_bits(Pv, m);LOG("\n");
-       LOG("Line 7  Mv: "); print_bits(Mv, m);LOG("\n");
-       LOG("Line 7  Xv: "); print_bits(Xv, m);LOG("\n");
-       LOG("Line 7  Xh: "); print_bits(Xh, m);LOG("\n");
-       LOG("Line 7  Ph: "); print_bits(Ph, m);LOG("\n");
-       LOG("Line 7  Mh: "); print_bits(Mh, m);LOG("\n");
-       LOG("Line 7  Xp: "); print_bits(Xp, m);LOG("\n");
-       LOG("Previous Score: %d\n", score);
-
-
-        Xv = Eqj | Mv;
-       LOG("Line 8  Xv: "); print_bits(Xv, m);LOG("\n");
-
-        Xh = (((~Xh) & Xv) << 1) & Xp;
-        Xh = Xh | (((Xv & Pv) + Pv) ^ Pv) | Xv | Mv;
-       LOG("Line 9-10 Xh: "); print_bits(Xh, m);LOG("\n");
-
+        Xv = Eq[(unsigned char)reference[j]] | Mv;
+        Xh = ((Xv & Pv) + Pv) ^ Pv | Xv | Mv;
         Ph = Mv | ~(Xh | Pv);
-       LOG("Line 11 Ph: "); print_bits(Ph, m);LOG("\n");
-
         Mh = Xh & Pv;
-       LOG("Line 12 Mh: "); print_bits(Mh, m);LOG("\n");
+
+        if (Ph & (1ULL << (m - 1))) score++;
+        if (Mh & (1ULL << (m - 1))) score--;
+
+        scores[j] = score;
 
         Xp = Xv;
-       LOG("Line 13 Xp: "); print_bits(Xp, m);LOG("\n");
-
-        if (Ph & (1ULL << (m - 1))) {
-            score++;
-           LOG("Line 14 Score incremented -> %d\n", score);
-        } else if (Mh & (1ULL << (m - 1))) {
-            score--;
-           LOG("Line 15 Score decremented -> %d\n", score);
-        }
-
-        Xv = (Ph << 1);
-       LOG("Line 16 Xv: "); print_bits(Xv, m);LOG("\n");
-
-        Pv = (Mh << 1) | ~(Xh | Xv);
-       LOG("Line 17 Pv: "); print_bits(Pv, m);LOG("\n");
-
-        Mv = Xh & Xv;
-       LOG("Line 18 Mv: "); print_bits(Mv, m);LOG("\n");
-
-       LOG("Current Score: %d\n", score);
-       LOG("-----------------------------\n");
-
-        if (scores) scores[j] = score;
+        Pv = (Mh << 1) | ~(Xh | (Ph << 1));
+        Mv = Xh & (Ph << 1);
     }
-
     return score;
 }
 
-
 int main() {
-    out = fopen("D:/download/College Life/Thesis/CSE2_Hyy-dra_Thesis/Resources/output.txt", "w");
-    if (!out) {
-        perror("Failed to open output.txt");
-        return 1;
-    }
     int num_queries = 0, num_references = 0;
     char **query_seqs = parse_fasta_file(query_file, &num_queries);
     char **reference_seqs = parse_fasta_file(reference_file, &num_references);
@@ -234,28 +162,27 @@ int main() {
             double elapsed = (double)(t2.QuadPart - t1.QuadPart) / freq.QuadPart;
 
             // --- Print Output (matching Python style) ---
-           LOG("Query: %s\n", query_seqs[q]);
-           LOG("Text:  %s\n", reference_seqs[r]);
-           LOG("Length of query(p) is %zu\n", strlen(query_seqs[q]));
-           LOG("Length of text(t) is %zu\n", strlen(reference_seqs[r]));
-           LOG("score:\n");
-           LOG("%s\n", reference_seqs[r]);
+            printf("Query: %s\n", query_seqs[q]);
+            printf("Text:  %s\n", reference_seqs[r]);
+            printf("Length of query(p) is %zu\n", strlen(query_seqs[q]));
+            printf("Length of text(t) is %zu\n", strlen(reference_seqs[r]));
+            printf("score:\n");
+            printf("%s\n", reference_seqs[r]);
             for (int i = 0; i < n; i++) {
-               LOG("%d", scores[i]);
-                if (i < n - 1)LOG(",");
+                printf("%d", scores[i]);
+                if (i < n - 1) printf(",");
             }
-           LOG("\n\nExecution time:  %.15f sec.\n", elapsed);
-           LOG("Done...\n\n");
-            
+            printf("\n\nExecution time:  %.15f sec.\n", elapsed);
+            printf("Done...\n\n");
+
             free(scores);
         }
     }
-    
+
     for (int i = 0; i < num_queries; i++) free(query_seqs[i]);
     free(query_seqs);
     for (int i = 0; i < num_references; i++) free(reference_seqs[i]);
     free(reference_seqs);
-    
-    if (out) fclose(out);
+
     return 0;
 }
