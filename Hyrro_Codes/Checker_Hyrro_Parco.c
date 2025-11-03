@@ -5,13 +5,11 @@
 #include <windows.h>
 #include <limits.h>
 
-#define MAX_LENGTH (1 << 24)
-#define MAX_LINE_LENGTH (1 << 14)
-
-#define query_file "D:/download/College Life/Thesis/CSE2_Hyy-dra_Thesis/Resources/Testing/temp-que.fasta"
-#define reference_file "D:/download/College Life/Thesis/CSE2_Hyy-dra_Thesis/Resources/Testing/temp-ref.fasta"
+#define query_file "D:/download/College Life/Thesis/CSE2_Hyy-dra_Thesis/Resources/Queries/que5_256.fasta"
+#define reference_file "D:/download/College Life/Thesis/CSE2_Hyy-dra_Thesis/Resources/References/ref5_50M.fasta"
 
 #define loope 10
+
 typedef uint64_t u64;
 
 #define BV_WORDS 4   /* 4 * 64 = 256 bits */
@@ -40,9 +38,33 @@ char** parse_fasta_file(const char *filename, int *num_sequences) {
     int seq_count = 0;
     char *current_seq = NULL;
     size_t current_seq_len = 0;
-    char line[MAX_LINE_LENGTH];
+    
+    char *line = NULL;
+    size_t line_buf_size = 0;
+    int c;
+    size_t line_len = 0;
 
-    while (fgets(line, sizeof(line), file)) {
+    while ((c = fgetc(file)) != EOF) {
+        if (line_len + 1 >= line_buf_size) {
+            line_buf_size = (line_buf_size == 0) ? 256 : line_buf_size * 2;
+            char *new_line = (char*)realloc(line, line_buf_size);
+            if (!new_line) {
+                perror("Failed to realloc line buffer");
+                free(line);
+                fclose(file);
+                return NULL;
+            }
+            line = new_line;
+        }
+
+        if (c == '\n' || c == '\r') {
+            if (line_len == 0) continue; // Skip empty lines
+            line[line_len] = '\0';
+        } else {
+            line[line_len++] = (char)c;
+            continue;
+        }
+
         if (line[0] == '>') {
             if (current_seq != NULL) {
                 if (current_seq_len > 0) {
@@ -57,9 +79,6 @@ char** parse_fasta_file(const char *filename, int *num_sequences) {
                 current_seq_len = 0;
             }
         } else {
-            size_t line_len = strlen(line);
-            while (line_len > 0 && (line[line_len - 1] == '\n' || line[line_len - 1] == '\r')) line_len--;
-            if (current_seq_len + line_len > MAX_LENGTH) line_len = MAX_LENGTH - current_seq_len;
             if (line_len > 0) {
                 current_seq = (char*)realloc(current_seq, current_seq_len + line_len + 1);
                 memcpy(current_seq + current_seq_len, line, line_len);
@@ -67,7 +86,17 @@ char** parse_fasta_file(const char *filename, int *num_sequences) {
                 current_seq[current_seq_len] = '\0';
             }
         }
+        line_len = 0; // Reset for next line
     }
+    // Handle last line if file doesn't end with newline
+    if (line_len > 0) {
+        line[line_len] = '\0';
+        current_seq = (char*)realloc(current_seq, current_seq_len + line_len + 1);
+        memcpy(current_seq + current_seq_len, line, line_len);
+        current_seq_len += line_len;
+        current_seq[current_seq_len] = '\0';
+    }
+
     if (current_seq != NULL && current_seq_len > 0) {
         sequences = (char**)realloc(sequences, (seq_count + 1) * sizeof(char*));
         sequences[seq_count] = (char*)malloc(current_seq_len + 1);
@@ -76,6 +105,7 @@ char** parse_fasta_file(const char *filename, int *num_sequences) {
         seq_count++;
         free(current_seq);
     }
+    free(line);
     fclose(file);
     *num_sequences = seq_count;
     return sequences;
@@ -147,13 +177,25 @@ static inline int bv_test_msb(const BV *v, int m) {
 
 /* --- Myers bit-parallel Levenshtein adapted to 256-bit BV --- */
 /* scores[] must have size n (reference length) */
-int bit_vector_levenshtein(const char *query, const char *reference, int *scores) {
+int bit_vector_levenshtein(const char *query, const char *reference, int *scores,
+                           int **hit_idxs, int *hit_count,
+                           int **low_idxs, int *low_count, int *lowest_score) {
     int m = (int)strlen(query);
     int n = (int)strlen(reference);
-    if (m <= 0) return -1;
+    if (m <= 0) {
+        *hit_count = 0;
+        *low_count = 0;
+        *lowest_score = 0;
+        return 0;
+    }
     if (m > BV_WORDS * 64) { printf("Error: query too long (max %d)\n", BV_WORDS * 64); return -1; }
 
-    BV Pv, Mv, Xv, Xh, Ph, Mh, tmp, addtmp;
+    *hit_idxs = (int*)malloc(n * sizeof(int));
+    *low_idxs = (int*)malloc(n * sizeof(int));
+    *hit_count = 0;
+    *low_count = 0;
+    *lowest_score = m;
+
     BV Eq[256];
     for (int i = 0; i < 256; ++i) bv_zero(&Eq[i]);
 
@@ -164,6 +206,7 @@ int bit_vector_levenshtein(const char *query, const char *reference, int *scores
         Eq[ch].w[word] |= (1ULL << bit);
     }
 
+    BV Pv, Mv, Xv, Xh, Ph, Mh, tmp, addtmp;
     bv_set_all(&Pv);
     bv_zero(&Mv);
     bv_mask_top(&Pv, m);
@@ -191,6 +234,16 @@ int bit_vector_levenshtein(const char *query, const char *reference, int *scores
 
         scores[j] = score;
 
+        if (score == 0) {
+            (*hit_idxs)[(*hit_count)++] = j;
+        }
+        if (score < *lowest_score) {
+            *lowest_score = score;
+            *low_count = 1;
+            (*low_idxs)[0] = j;
+        } else if (score == *lowest_score) {
+            (*low_idxs)[(*low_count)++] = j;
+        }
         /* Pv = (Mh << 1) | ~(Xh | (Ph << 1)) */
         BV Mh_shl, Ph_shl, xh_or_phshl, not_xh_or_phshl;
         bv_shl1(&Mh, &Mh_shl);
@@ -242,84 +295,79 @@ int main() {
         out = stdout;
     }
 
-    LARGE_INTEGER freq, t_start_all, t_end_all;
+    LARGE_INTEGER freq;
     QueryPerformanceFrequency(&freq);
-    QueryPerformanceCounter(&t_start_all);
+    
+    double total_elapsed_time = 0.0;
 
-    for (int q = 0; q < num_queries; q++) {
-        for (int r = 0; r < num_references; r++) {
-            int n = (int)strlen(reference_seqs[r]);
-            int m = (int)strlen(query_seqs[q]);
-            if (m > BV_WORDS * 64) {
-                fprintf(stderr, "Query length %d exceeds BV capacity %d\n", m, BV_WORDS * 64);
-                continue;
-            }
-            int *scores = (int*)malloc(n * sizeof(int));
-            if (!scores) { perror("Failed to allocate scores"); continue; }
+    for (int loop = 0; loop < loope; loop++) {
+        LARGE_INTEGER t_start_all, t_end_all;
+        QueryPerformanceCounter(&t_start_all);
 
-            LARGE_INTEGER t1, t2;
-            QueryPerformanceCounter(&t1);
-            int final_distance = bit_vector_levenshtein(query_seqs[q], reference_seqs[r], scores);
-            QueryPerformanceCounter(&t2);
-
-            double elapsed_pair = (double)(t2.QuadPart - t1.QuadPart) / freq.QuadPart;
-
-            int *hit_idxs = (int*)malloc(n * sizeof(int));
-            int hit_count = 0;
-            int *low_idxs = (int*)malloc(n * sizeof(int));
-            int low_count = 0;
-            int lowest = INT_MAX;
-
-            for (int i = 0; i < n; i++) {
-                int s = scores[i];
-                if (s == 0) hit_idxs[hit_count++] = i;
-                if (s < lowest) { lowest = s; low_count = 0; low_idxs[low_count++] = i; }
-                else if (s == lowest) low_idxs[low_count++] = i;
-            }
-
-            fprintf(out, "----------------------------------------------------------------------------\n");
-            fprintf(out, "Pair: Q%d(%d) Vs R%d(%d)\n", q+1, m, r+1, n);
-            fprintf(out, "Number of Hits: %d\n", hit_count);
-
-            if (hit_count > 0) {
-                fprintf(out, "Hit Indexes: [");
-                for (int h = 0; h < hit_count; h++) { fprintf(out, "%d", hit_idxs[h]); if (h < hit_count - 1) fprintf(out, ", "); }
-                fprintf(out, "]\n");
-                fprintf(out, "Lowest Score: N/A\n");
-                fprintf(out, "Lowest Score Indexes: N/A\n");
-            } else {
-                fprintf(out, "Hit Indexes: N/A\n");
-                if (lowest != INT_MAX) {
-                    fprintf(out, "Lowest Score: %d\n", lowest);
-                    if (low_count > 0) {
-                        fprintf(out, "Lowest Score Indexes: [");
-                        for (int li = 0; li < low_count; li++) { fprintf(out, "%d", low_idxs[li]); if (li < low_count - 1) fprintf(out, ", "); }
-                        fprintf(out, "]\n");
-                    } else {
-                        fprintf(out, "Lowest Score Indexes: N/A\n");
-                    }
-                } else {
-                    fprintf(out, "Lowest Score: N/A\n");
-                    fprintf(out, "Lowest Score Indexes: N/A\n");
+        for (int q = 0; q < num_queries; q++) {
+            for (int r = 0; r < num_references; r++) {
+                int n = (int)strlen(reference_seqs[r]);
+                int m = (int)strlen(query_seqs[q]);
+                if (m > BV_WORDS * 64) {
+                    if (loop == 0) fprintf(stderr, "Query length %d exceeds BV capacity %d\n", m, BV_WORDS * 64);
+                    continue;
                 }
+                int *scores = (int*)malloc(n * sizeof(int));
+                if (!scores) { perror("Failed to allocate scores"); continue; }
+
+                int *hit_idxs = NULL, hit_count = 0;
+                int *low_idxs = NULL, low_count = 0;
+                int lowest = INT_MAX;
+
+                int final_distance = bit_vector_levenshtein(query_seqs[q], reference_seqs[r], scores, &hit_idxs, &hit_count, &low_idxs, &low_count, &lowest);
+
+                // Only print detailed results on the first loop iteration
+                if (loop == 0) {
+                    fprintf(out, "----------------------------------------------------------------------------\n");
+                    fprintf(out, "Pair: Q%d(%d) Vs R%d(%d)\n", q+1, m, r+1, n);
+                    fprintf(out, "Number of Hits: %d\n", hit_count);
+
+                    if (hit_count > 0) {
+                        fprintf(out, "Hit Indexes: [");
+                        for (int h = 0; h < hit_count; h++) { fprintf(out, "%d", hit_idxs[h]); if (h < hit_count - 1) fprintf(out, ", "); }
+                        fprintf(out, "]\n");
+                        fprintf(out, "Lowest Score: N/A\n");
+                        fprintf(out, "Lowest Score Indexes: N/A\n");
+                    } else {
+                        fprintf(out, "Hit Indexes: N/A\n");
+                        if (lowest != INT_MAX) {
+                            fprintf(out, "Lowest Score: %d\n", lowest);
+                            if (low_count > 0) {
+                                fprintf(out, "Lowest Score Indexes: [");
+                                for (int li = 0; li < low_count; li++) { fprintf(out, "%d", low_idxs[li]); if (li < low_count - 1) fprintf(out, ", "); }
+                                fprintf(out, "]\n");
+                            } else {
+                                fprintf(out, "Lowest Score Indexes: N/A\n");
+                            }
+                        } else {
+                            fprintf(out, "Lowest Score: N/A\n");
+                            fprintf(out, "Lowest Score Indexes: N/A\n");
+                        }
+                    }
+
+                    if (n > 0) fprintf(out, "Last Score: %d\n", scores[n-1]);
+                    else fprintf(out, "Last Score: N/A\n");
+
+                    fprintf(out, "----------------------------------------------------------------------------\n\n");
+                }
+
+                free(scores);
+                free(hit_idxs);
+                free(low_idxs);
             }
-
-            if (n > 0) fprintf(out, "Last Score: %d\n", scores[n-1]);
-            else fprintf(out, "Last Score: N/A\n");
-
-            fprintf(out, "----------------------------------------------------------------------------\n\n");
-
-            free(scores);
-            free(hit_idxs);
-            free(low_idxs);
         }
+
+        QueryPerformanceCounter(&t_end_all);
+        total_elapsed_time += (double)(t_end_all.QuadPart - t_start_all.QuadPart) / freq.QuadPart;
     }
 
-    QueryPerformanceCounter(&t_end_all);
-    double elapsed_all = (double)(t_end_all.QuadPart - t_start_all.QuadPart) / freq.QuadPart;
-
-    // print total execution time at the end, raw seconds (still available in human units if needed)
-    fprintf(out, "Execution time: %.15f sec.\n", elapsed_all);
+    double average_time = total_elapsed_time / loope;
+    fprintf(out, "%d loop Average time: %.6f sec.\n", loope, average_time);
 
     for (int i = 0; i < num_queries; i++) free(query_seqs[i]);
     free(query_seqs);
