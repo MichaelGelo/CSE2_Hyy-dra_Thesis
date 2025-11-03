@@ -8,8 +8,8 @@
 #define MAX_LENGTH (1 << 24)
 #define MAX_LINE_LENGTH (1 << 14)
 
-#define query_file "D:/download/College Life/Thesis/CSE2_Hyy-dra_Thesis/Resources/Testing/final_query_[10].fasta"
-#define reference_file "D:/download/College Life/Thesis/CSE2_Hyy-dra_Thesis/Resources/Testing/final_ref_[10].fasta"
+#define query_file "D:/download/College Life/Thesis/CSE2_Hyy-dra_Thesis/Resources/Testing/temp-que.fasta"
+#define reference_file "D:/download/College Life/Thesis/CSE2_Hyy-dra_Thesis/Resources/Testing/temp-ref.fasta"
 
 #define loope 10
 typedef uint64_t u64;
