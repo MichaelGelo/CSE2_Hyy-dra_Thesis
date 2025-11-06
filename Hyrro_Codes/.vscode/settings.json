@@ -1,5 +1,6 @@
 {
     "files.associations": {
         "limits.h": "c"
-    }
+    },
+    "codium.codeCompletion.enable": false
 }
