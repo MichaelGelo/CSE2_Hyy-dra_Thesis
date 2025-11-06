@@ -21,8 +21,8 @@
 #define MAX_HITS 1024
 
 // user params
-#define query_file "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/Queries/que4_256.fasta"
-#define reference_file "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/References/ref5_50M.fasta"
+#define query_file "que5_256.fasta"
+#define reference_file "ref5_50M.fasta"
 #define threadsPerBlock 256
 #define loope 10
 #define CHUNK_SIZE 166700
@@ -106,19 +106,24 @@ static __forceinline__ __host__ __device__ int bv_test_top_unrolled(const bv_t* 
     return ((v->w[3] >> bit) & 1ULL) ? 1 : 0;
 }
 static __forceinline__ __host__ __device__ uint64_t bv_add_unrolled(bv_t* out, const bv_t* a, const bv_t* b) {
-    uint64_t carry = 0;
-    uint64_t sum = a->w[0] + b->w[0];
-    carry = (sum < a->w[0]);
-    out->w[0] = sum;
-    sum = a->w[1] + b->w[1] + carry;
-    carry = (sum < a->w[1]) || (carry && sum == a->w[1]);
-    out->w[1] = sum;
-    sum = a->w[2] + b->w[2] + carry;
-    carry = (sum < a->w[2]) || (carry && sum == a->w[2]);
-    out->w[2] = sum;
-    sum = a->w[3] + b->w[3] + carry;
-    carry = (sum < a->w[3]) || (carry && sum == a->w[3]);
-    out->w[3] = sum;
+    uint64_t carry = 0ULL;
+
+    uint64_t sum0 = a->w[0] + b->w[0];
+    carry = (sum0 < a->w[0]);
+    out->w[0] = sum0;
+
+    uint64_t sum1 = a->w[1] + b->w[1] + carry;
+    carry = (sum1 < a->w[1]) || (sum1 == a->w[1] && carry);
+    out->w[1] = sum1;
+
+    uint64_t sum2 = a->w[2] + b->w[2] + carry;
+    carry = (sum2 < a->w[2]) || (sum2 == a->w[2] && carry);
+    out->w[2] = sum2;
+
+    uint64_t sum3 = a->w[3] + b->w[3] + carry;
+    carry = (sum3 < a->w[3]) || (sum3 == a->w[3] && carry);
+    out->w[3] = sum3;
+
     return carry;
 }
 
@@ -131,7 +136,7 @@ static __forceinline__ __host__ __device__ int bit_vector_levenshtein_local(
     int* zero_indices,
     int* zero_count,
     int* lowest,
-    int* lowest_index_local)   // returns local j for lowest
+    int* lowest_index_local)
 {
     if (query_length > 64 * BV_WORDS || query_length <= 0) return -1;
 
@@ -245,7 +250,8 @@ __global__ void levenshtein_kernel_shared_agg(
         int local_lowest_val = INT_MAX;
         int local_lowest_idx = -1;
 
-        int dist = bit_vector_levenshtein_local(qlen, refptr, rlen, s_Eq, local_zero_indices, &local_zero_count, &local_lowest_val, &local_lowest_idx);
+        int dist = bit_vector_levenshtein_local(qlen, refptr, rlen, s_Eq, 
+            local_zero_indices, &local_zero_count, &local_lowest_val, &local_lowest_idx);
 
         // write pair-level results (pair-level arrays sized num_queries * num_chunks)
         d_pair_distances[pair_idx] = dist;
@@ -285,18 +291,8 @@ __global__ void levenshtein_kernel_shared_agg(
             } while (true);
         }
 
-        // If there was a zero (score==0) we still need to ensure lowest is 0 and index recorded
-        // Note: local_lowest_val will be 0 in that case and handled above.
-
-        // 2) set last score if this chunk contains the final base of the original reference
-        // Condition: chunk_start + (rlen - 1) == orig_ref_len - 1
-        int orig_len = d_orig_ref_lens[orig];
-        if ((long long)chunk_start + (long long)rlen == (long long)orig_len) {
-            // this chunk ends exactly at original's final position; write last score
-            // We use atomicExch because only the true last chunk should hit this condition,
-            // but atomicExch is safe even if multiple threads attempt (they would write same value)
-            atomicExch(&d_last_score_orig[orig_pair_idx], dist);
-        }
+        // 2) For last score: We'll handle this on host side for correctness
+        // (Removed GPU last score logic to keep kernel fast)
     }
 }
 
@@ -518,6 +514,34 @@ int main() {
     CUDA_CHECK(cudaMemcpy(h_lowest_index_orig, d_lowest_index_orig, (size_t)num_queries * num_orig_refs * sizeof(int), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(h_last_score_orig, d_last_score_orig, (size_t)num_queries * num_orig_refs * sizeof(int), cudaMemcpyDeviceToHost));
 
+    // NEW: Correct last scores on host (fast and accurate)
+    for (int q = 0; q < num_queries; ++q) {
+        for (int orig = 0; orig < num_orig_refs; ++orig) {
+            long long orig_pair_idx = (long long)q * num_orig_refs + orig;
+            int orig_len = orig_ref_lens[orig];
+            int correct_last_score = 0x7f7f7f7f; // Start with sentinel
+            
+            // Find the chunk that actually ends at the original reference length
+            for (int ci_idx = 0; ci_idx < orig_chunk_counts[orig]; ++ci_idx) {
+                int chunk_id = orig_chunk_lists[orig][ci_idx];
+                int chunk_start = chunk_starts[chunk_id];
+                int chunk_len = chunk_lens[chunk_id];
+                
+                // This chunk contains the true end if: chunk_start + chunk_len == orig_len
+                if (chunk_start + chunk_len == orig_len) {
+                    long long pair_idx = (long long)q * num_chunks + chunk_id;
+                    correct_last_score = h_pair_distances[pair_idx];
+                    break;
+                }
+            }
+            
+            // If we found a valid last score, override the GPU-computed one
+            if (correct_last_score != 0x7f7f7f7f) {
+                h_last_score_orig[orig_pair_idx] = correct_last_score;
+            }
+        }
+    }
+
     // Aggregate hits per original ref on host (dedupe & sort)
     for (int q = 0; q < num_queries; ++q) {
         for (int orig = 0; orig < num_orig_refs; ++orig) {
@@ -578,7 +602,7 @@ int main() {
                 else printf("Lowest Score Indexes: N/A\n");
             }
 
-            // last score: device wrote it only if chunk contained final pos; sentinel check
+            // last score: now corrected on host
             int last_gpu = h_last_score_orig[(long long)q * num_orig_refs + orig];
             if (last_gpu == 0x7f7f7f7f) {
                 printf("Last Score: N/A\n");

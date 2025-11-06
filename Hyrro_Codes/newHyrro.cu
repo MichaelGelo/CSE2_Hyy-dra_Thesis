@@ -1,4 +1,3 @@
-%%writefile hycuda.cu
 // unified_leven_partitioned_gpu_no_shared.cu
 // Combined partition + Hyyrö bit-vector Levenshtein with GPU-side aggregation
 // Shared memory for Eq removed to avoid ptxas error
@@ -23,11 +22,11 @@
 #define MAX_HITS 1024
 
 // user params
-#define query_file "que4_256.fasta"
+#define query_file "que5_256.fasta"
 #define reference_file "ref5_50M.fasta"
 #define threadsPerBlock 256
 #define loope 10
-#define CHUNK_SIZE 166700
+#define CHUNK_SIZE 300000
 #define PARTITION_THRESHOLD 1000000
 // end user params
 
@@ -108,19 +107,25 @@ static __forceinline__ __host__ __device__ int bv_test_top_unrolled(const bv_t* 
     return ((v->w[3] >> bit) & 1ULL) ? 1 : 0;
 }
 static __forceinline__ __host__ __device__ uint64_t bv_add_unrolled(bv_t* out, const bv_t* a, const bv_t* b) {
-    unsigned __int128 t0 = (unsigned __int128)a->w[0] + (unsigned __int128)b->w[0];
-    out->w[0] = (uint64_t)t0;
-    unsigned __int128 carry = t0 >> 64;
-    unsigned __int128 t1 = (unsigned __int128)a->w[1] + (unsigned __int128)b->w[1] + carry;
-    out->w[1] = (uint64_t)t1;
-    carry = t1 >> 64;
-    unsigned __int128 t2 = (unsigned __int128)a->w[2] + (unsigned __int128)b->w[2] + carry;
-    out->w[2] = (uint64_t)t2;
-    carry = t2 >> 64;
-    unsigned __int128 t3 = (unsigned __int128)a->w[3] + (unsigned __int128)b->w[3] + carry;
-    out->w[3] = (uint64_t)t3;
-    carry = t3 >> 64;
-    return (uint64_t)carry;
+    uint64_t carry = 0ULL;
+
+    uint64_t sum0 = a->w[0] + b->w[0];
+    carry = (sum0 < a->w[0]); // Check for overflow
+    out->w[0] = sum0;
+
+    uint64_t sum1 = a->w[1] + b->w[1] + carry;
+    carry = (sum1 < a->w[1]) || (sum1 == a->w[1] && carry);
+    out->w[1] = sum1;
+
+    uint64_t sum2 = a->w[2] + b->w[2] + carry;
+    carry = (sum2 < a->w[2]) || (sum2 == a->w[2] && carry);
+    out->w[2] = sum2;
+
+    uint64_t sum3 = a->w[3] + b->w[3] + carry;
+    carry = (sum3 < a->w[3]) || (sum3 == a->w[3] && carry);
+    out->w[3] = sum3;
+
+    return carry;
 }
 
 // ---------- Bit-vector Levenshtein (same as original) ----------
@@ -351,7 +356,7 @@ int main() {
     int* chunk_lens = (int*)malloc(sizeof(int) * estimated_chunks);
     int* chunk_starts = (int*)malloc(sizeof(int) * estimated_chunks); // global start in original
     int* chunk_to_orig = (int*)malloc(sizeof(int) * estimated_chunks);
-    
+
     int chunk_idx = 0;
     for (int r = 0; r < num_orig_refs; ++r) {
         int rlen = orig_ref_lens[r];
@@ -447,7 +452,7 @@ int main() {
     long long total_agg_pairs = (long long)num_queries * num_orig_refs;
     int* d_lowest_score_agg = NULL;
     int* d_lowest_index_agg = NULL; // Note: This logic is complex to parallelize, focusing on score first.
-    int* d_last_score_agg = NULL;    
+    int* d_last_score_agg = NULL;
 
     CUDA_CHECK(cudaMalloc((void**)&d_Eq_queries, (size_t)num_queries * 256 * sizeof(bv_t)));
     CUDA_CHECK(cudaMalloc((void**)&d_queries, h_queries_bytes));
@@ -512,7 +517,7 @@ int main() {
     CUDA_CHECK(cudaDeviceSynchronize());
     double t1 = now_seconds();
     double avg_time = (t1 - t0) / (double)loope;
-    
+
     // Copy back final aggregated results
     CUDA_CHECK(cudaMemcpy(h_lowest_score_agg, d_lowest_score_agg, total_agg_pairs * sizeof(int), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(h_lowest_index_agg, d_lowest_index_agg, total_agg_pairs * sizeof(int), cudaMemcpyDeviceToHost));
