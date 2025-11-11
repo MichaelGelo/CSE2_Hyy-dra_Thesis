@@ -1,62 +1,58 @@
-from pathlib import Path
 import paramiko
 from scp import SCPClient
+from pathlib import Path
 import re
+import socket
 
-def run_fpga_test(ref_name, que_name,
-                  hostname="192.168.2.99",
-                  username="xilinx",
-                  password="xilinx",
-                  remote_path="/home/xilinx/jupyter_notebooks/FPGAGPU1",
-                  main_script="fpga_code.py"):
-    """
-    Sends a reference and query FASTA file to the FPGA,
-    runs the processing script, and returns the execution time (ms).
-    """
+class FPGARunner:
+    def __init__(self, hostname="192.168.2.99", username="xilinx", password="xilinx",
+                 remote_path="/home/xilinx/jupyter_notebooks/FPGAGPU1", port=22):
+        self.hostname = hostname
+        self.username = username
+        self.password = password
+        self.remote_path = remote_path
+        self.port = port
 
-    # local base paths
-    ref_base = Path("./Resources/References")
-    que_base = Path("./Resources/Queries")
+        # Establish SSH connection once
+        self.ssh = paramiko.SSHClient()
+        self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        self.ssh.connect(hostname=self.hostname, username=self.username,
+                         password=self.password, port=self.port)
+        self.scp = SCPClient(self.ssh.get_transport())
 
-    local_ref = (ref_base / ref_name).resolve()
-    local_que = (que_base / que_name).resolve()
+    def send_files(self, local_ref, local_que):
+        # Send reference and query to FPGA server
+        self.scp.put(local_ref, self.remote_path)
+        self.scp.put(local_que, self.remote_path)
+        return f"{self.remote_path}/{Path(local_ref).name}", f"{self.remote_path}/{Path(local_que).name}"
 
-    if not (local_ref.exists() and local_que.exists()):
-        print(f"Skipping: {local_ref.as_posix()} or {local_que.as_posix()} not found")
-        return None
+    def run_test(self, ref_name, que_name):
+        local_ref = Path("./Resources/References") / ref_name
+        local_que = Path("./Resources/Queries") / que_name
 
-    print(f"Sending {ref_name} and {que_name} to FPGA...")
+        if not (local_ref.exists() and local_que.exists()):
+            print(f"Skipping: {local_ref} or {local_que} not found")
+            return None
 
-    # ssh
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect(hostname, username=username, password=password)
-    scp = SCPClient(ssh.get_transport())
+        print(f"Sending {ref_name} and {que_name} to FPGA...")
 
-    # send files
-    scp.put(local_ref.as_posix(), remote_path)
-    scp.put(local_que.as_posix(), remote_path)
+        remote_ref, remote_que = self.send_files(local_ref.as_posix(), local_que.as_posix())
 
-    # build remote file paths
-    remote_ref = f"{remote_path}/{ref_name}"
-    remote_que = f"{remote_path}/{que_name}"
+        # Execute the FPGA server script
+        cmd = f"python3 {self.remote_path}/fpga_server.py {remote_ref} {remote_que}"
+        stdin, stdout, stderr = self.ssh.exec_command(cmd)
 
-    cmd = f"sudo python3 {remote_path}/{main_script} {remote_ref} {remote_que}"
-    print(f"Executing FPGA command")
+        fpga_output = stdout.read().decode()
+        fpga_error = stderr.read().decode()
+        print(fpga_output)
 
-    stdin, stdout, stderr = ssh.exec_command(cmd)
-    fpga_output = stdout.read().decode()
-    fpga_error = stderr.read().decode()
+        # Extract hardware execution time
+        match = re.search(r"Hardware execution time: ([\d\.]+) ms", fpga_output)
+        hw_exec_time_ms = float(match.group(1)) if match else None
 
-    # display and extract results
+        return hw_exec_time_ms
 
-    print(fpga_output)
-
-    match = re.search(r"Hardware execution time: ([\d\.]+) ms", fpga_output)
-    hw_exec_time_ms = float(match.group(1)) if match else None
-
-    # close connections
-    scp.close()
-    ssh.close()
-
-    return hw_exec_time_ms
+    def close(self):
+        # Close connections when all tests are done
+        self.scp.close()
+        self.ssh.close()
