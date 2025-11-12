@@ -1,4 +1,4 @@
-// unified_leven_partitioned_gpu.cu
+// hycuda.cu
 // Hyyrö bit-vector Levenshtein with GPU-side aggregation using partition_utils.h
 // Compile:
 //   nvcc -O3 unified_leven_partitioned_gpu.cu C_utils.c -o unified_leven_partitioned_gpu
@@ -16,7 +16,7 @@
 #include "C_utils.h"
 #include "partition.h"
 #include "loading.h"
-
+#include "sender.h"
 
 
 #define MAX_LENGTH (1 << 24)   // per-slot buffer size (must be >= longest chunk)
@@ -313,6 +313,11 @@ int main() {
     char** orig_refs = load_references_gpu_fpga(&num_orig_refs, &gpu_refs, &gpu_ref_lens);
 
     printf("Loaded %d queries and %d references\n", num_queries, num_orig_refs);
+
+    // start run fpga
+    send_and_run_fpga();
+
+    // end run fpga
 
     // original lengths
     int* orig_ref_lens = (int*)malloc(num_orig_refs * sizeof(int));
