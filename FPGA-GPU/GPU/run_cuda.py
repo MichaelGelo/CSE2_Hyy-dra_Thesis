@@ -2,14 +2,14 @@ import random
 import os
 import time
 import ctypes
-import threading 
+import threading
 from ctypes import c_char_p, c_int, byref
 
 # --- EXTERNAL DEPENDENCIES ---
-from fpga_runner import run_fpga_test 
+from fpga_runner import run_fpga_test
 
-# --- CUDA LIBRARY SETUP (NO CHANGE) ---
-LIBRARY_NAME = 'leven_wrapper.dll' 
+# --- CUDA LIBRARY SETUP (FIXED FOR UBUNTU) ---
+LIBRARY_NAME = 'leven_wrapper.so'  # Use .so for Linux shared libraries
 try:
     leven_lib = ctypes.CDLL(os.path.abspath(LIBRARY_NAME))
     leven_lib.align_sequences_gpu.argtypes = [
@@ -20,7 +20,7 @@ try:
 except OSError:
     print(f"Error: Could not load CUDA library '{LIBRARY_NAME}'. Ensure it is compiled.")
     exit()
-# ----------------------------------------
+# ---------------------------------------------
 
 
 # --- Global Results Dictionary for Thread Communication ---
@@ -32,7 +32,7 @@ RESULTS = {
     'gpu_last': None,
     'fpga_score': None,
 }
-# --------------------------------------------------------
+# -----------------------------------------------------------
 
 
 def parse_fasta(filepath):
@@ -40,12 +40,11 @@ def parse_fasta(filepath):
     sequences = {}
     current_header = None
     current_seq = []
-    
-    # ... (rest of parse_fasta remains the same) ...
+
     if not os.path.exists(filepath):
         print(f"Error: FASTA file not found at {filepath}")
         return {}
-    
+
     with open(filepath, 'r') as f:
         for line in f:
             line = line.strip()
@@ -56,10 +55,10 @@ def parse_fasta(filepath):
                 current_seq = []
             elif current_header:
                 current_seq.append(line.upper().replace(' ', ''))
-        
+
         if current_header and current_seq:
             sequences[current_header] = "".join(current_seq)
-            
+
     return sequences
 
 
@@ -68,16 +67,14 @@ def save_fasta_part(filename, header, sequence):
     with open(filename, 'w') as f:
         f.write(f">{header}\n")
         for i in range(0, len(sequence), 80):
-            f.write(sequence[i:i+80] + '\n')
+            f.write(sequence[i:i + 80] + '\n')
 
 
 # --- THREAD WORKER 1: GPU ALIGNMENT ---
 def gpu_worker(q_bytes, q_len, r1_bytes, r1_len):
     """Worker function for running the GPU alignment."""
-    
     print("--- GPU THREAD: Started Alignment (Part 1) ---")
-    
-    # Prepare output pointers
+
     lowest_score = c_int(0)
     lowest_index = c_int(-1)
     last_score = c_int(0)
@@ -87,7 +84,7 @@ def gpu_worker(q_bytes, q_len, r1_bytes, r1_len):
         q_bytes, q_len, r1_bytes, r1_len,
         byref(lowest_score), byref(lowest_index), byref(last_score)
     )
-    gpu_time = (time.perf_counter() - start_gpu) * 1000 # Convert to ms
+    gpu_time = (time.perf_counter() - start_gpu) * 1000  # Convert to ms
 
     if status == 0:
         RESULTS['gpu_time'] = gpu_time
@@ -100,20 +97,15 @@ def gpu_worker(q_bytes, q_len, r1_bytes, r1_len):
 
 
 # --- THREAD WORKER 2: FPGA TEST ---
-# NOTE: This worker now uses the simple filename directly for the query.
 def fpga_worker(fpga_temp_file, que_choice_name):
     """Worker function for running the FPGA test."""
-    
     print("--- FPGA THREAD: Started Test (Part 2) ---")
-    
-    # Pass the temporary reference file (Ref_Part2_FPGA.fasta) and the simple query filename (e.g., que5_256.fasta)
     print(f"Attempting to run FPGA with files:")
     print(f"  Ref: {fpga_temp_file}")
     print(f"  Que: {que_choice_name}")
-    
-    # Call run_fpga_test with the simple query filename
-    fpga_time = run_fpga_test(fpga_temp_file, que_choice_name) 
-    
+
+    fpga_time = run_fpga_test(fpga_temp_file, que_choice_name)
+
     if fpga_time is not None:
         RESULTS['fpga_time'] = fpga_time
         print(f"--- FPGA THREAD: Finished in {fpga_time:.3f} ms ---")
@@ -123,28 +115,20 @@ def fpga_worker(fpga_temp_file, que_choice_name):
 
 def run_hybrid_split_test():
     """Splits reference and runs GPU and FPGA concurrently."""
-    
     global RESULTS
-    
+
     ref_files = ["ref1_500k.fasta", "ref2_1M.fasta", "ref3_10M.fasta", "ref4_25M.fasta", "ref5_50M.fasta"]
     que_files = ["que1_64.fasta", "que2_128.fasta", "que3_128.fasta", "que4_256.fasta", "que5_256.fasta"]
     FPGA_TEMP_FILE = "Ref_Part2_FPGA.fasta"
-    
-    # Removed complex path setup
-    # BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    # QUERY_BASE_PATH = os.path.join(BASE_DIR, "Resources", "Queries")
-    
+
     ref_choice = random.choice(ref_files)
     que_choice_name = random.choice(que_files)
-    # Removed: full_query_path_for_fpga = os.path.join(QUERY_BASE_PATH, que_choice_name)
 
     print(f"--- Selected Pair ---")
     print(f" Reference: {ref_choice}")
     print(f" Query: {que_choice_name}")
     print("---------------------\n")
 
-    # --- 1. Load, Split, and Save Data (MUST be done sequentially first) ---
-    
     queries = parse_fasta(que_choice_name)
     references = parse_fasta(ref_choice)
     if not queries or not references:
@@ -157,84 +141,65 @@ def run_hybrid_split_test():
 
     ref_id, REF_SEQ = next(iter(references.items()))
     r_len = len(REF_SEQ)
-    
+
     split_point = r_len // 2
     REF_PART1 = REF_SEQ[:split_point]
     REF_PART2 = REF_SEQ[split_point:]
-    
+
     r1_len = len(REF_PART1)
     r2_len = len(REF_PART2)
-    
-    r1_bytes = REF_PART1.encode('ascii') # GPU input is bytes
+
+    r1_bytes = REF_PART1.encode('ascii')
 
     print(f"Total Reference Length: {r_len:,} bases")
     print(f"-> GPU Reference (Part 1) Length: {r1_len:,} bases")
     print(f"-> FPGA Reference (Part 2) Length: {r2_len:,} bases")
-    
-    # Save the second part for the FPGA runner
-    save_fasta_part(FPGA_TEMP_FILE, f"{ref_id}_PART2", REF_PART2)
-    
 
-    # --- 2. CONCURRENT EXECUTION START ---
-    
+    save_fasta_part(FPGA_TEMP_FILE, f"{ref_id}_PART2", REF_PART2)
+
     print("\n==================================")
     print("STARTING CONCURRENT EXECUTION")
     print("==================================")
-    
+
     start_concurrent = time.perf_counter()
-    
-    # Initialize and start GPU thread
-    gpu_thread = threading.Thread(
-        target=gpu_worker, 
-        args=(q_bytes, q_len, r1_bytes, r1_len)
-    )
+
+    gpu_thread = threading.Thread(target=gpu_worker, args=(q_bytes, q_len, r1_bytes, r1_len))
+    fpga_thread = threading.Thread(target=fpga_worker, args=(FPGA_TEMP_FILE, que_choice_name))
+
     gpu_thread.start()
-    
-    # Initialize and start FPGA thread
-    # ARGUMENTS SIMPLIFIED: Passing only the query FILENAME (que_choice_name)
-    fpga_thread = threading.Thread(
-        target=fpga_worker, 
-        args=(FPGA_TEMP_FILE, que_choice_name)
-    )
     fpga_thread.start()
 
-    # Wait for both threads to finish
     gpu_thread.join()
     fpga_thread.join()
-    
+
     end_concurrent = time.perf_counter()
-    total_concurrent_time = (end_concurrent - start_concurrent) * 1000 # ms
-    
-    
-    # --- 3. Report Summary & Cleanup ---
-    
-    gpu_time = RESULTS.get('gpu_time')
-    fpga_time = RESULTS.get('fpga_time')
+    total_concurrent_time = (end_concurrent - start_concurrent) * 1000
 
     print("\n==================================")
     print("CONCURRENT RESULTS SUMMARY")
     print(f"Total Reference: {ref_choice} ({r_len:,} bases)")
     print("----------------------------------")
 
+    gpu_time = RESULTS.get('gpu_time')
+    fpga_time = RESULTS.get('fpga_time')
+
     if gpu_time is not None:
         print(f"GPU (Part 1) Time: {gpu_time:.3f} ms")
         print(f"GPU Result: Score={RESULTS.get('gpu_score')}, Index={RESULTS.get('gpu_index')}, Last={RESULTS.get('gpu_last')}")
     if fpga_time is not None:
         print(f"FPGA (Part 2) Time: {fpga_time:.3f} ms")
-    
+
     if gpu_time is not None and fpga_time is not None:
-        # The true concurrent time is the time of the longest task (the bottleneck)
         bottleneck_time = max(gpu_time, fpga_time)
         print(f"\nTime Bottleneck: {bottleneck_time:.3f} ms")
         print(f"Total Elapsed Concurrent Time: {total_concurrent_time:.3f} ms")
         print("(Total Elapsed Time should be close to the Bottleneck Time)")
-    
+
     print("==================================")
-    
-    # Cleanup the temporary FPGA file
+
     os.remove(FPGA_TEMP_FILE)
     print(f"Cleaned up temporary file: {FPGA_TEMP_FILE}")
-    
+
 
 if __name__ == '__main__':
     run_hybrid_split_test()
