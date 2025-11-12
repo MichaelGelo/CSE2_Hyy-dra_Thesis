@@ -9,7 +9,7 @@
 
 // ================= USER DEFINES =================
 #define QUERY_FILE     "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/Queries/que5_256.fasta"
-#define REFERENCE_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/References/ref5_50M.fasta"
+#define REFERENCE_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/References/ref1_500k.fasta"
 #define FPGA_OUTPUT_DIR "./fpga_splits/"
 
 // Speed ratio for splitting reference
