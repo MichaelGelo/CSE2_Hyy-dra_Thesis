@@ -25,7 +25,7 @@ void send_and_run_fpga() {
     // ---------------- Send reference file ----------------
     gettimeofday(&start, NULL);
     snprintf(command, sizeof(command),
-             "sshpass -p '%s' scp '%s' %s@%s:%s/",
+             "sshpass -p '%s' rsync '%s' %s@%s:%s/",
              PASSWORD, HOST_FPGA_REF, USERNAME, FPGA_IP, REMOTE_PATH);
     printf("Sending %s to FPGA...\n", HOST_FPGA_REF);
     if (system(command) != 0) {
@@ -39,7 +39,7 @@ void send_and_run_fpga() {
     // ---------------- Send query file ----------------
     gettimeofday(&start, NULL);
     snprintf(command, sizeof(command),
-             "sshpass -p '%s' scp '%s' %s@%s:%s/",
+             "sshpass -p '%s' rsync '%s' %s@%s:%s/",
              PASSWORD, HOST_FPGA_QUERY, USERNAME, FPGA_IP, REMOTE_PATH);
     printf("Sending %s to FPGA...\n", HOST_FPGA_QUERY);
     if (system(command) != 0) {
