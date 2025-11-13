@@ -13,8 +13,8 @@
 #define FPGA_OUTPUT_DIR "./fpga_splits/"
 
 // Speed ratio for splitting reference
-#define FPGA_SPEED_RATIO 0.9f
-#define GPU_SPEED_RATIO  0.1f
+#define FPGA_SPEED_RATIO 0.5f
+#define GPU_SPEED_RATIO  0.5f
 // ===============================================
 
 // Utility: write sequence to FASTA (line width 60)
