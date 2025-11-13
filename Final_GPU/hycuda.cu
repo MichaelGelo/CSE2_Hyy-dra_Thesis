@@ -328,7 +328,7 @@ int main() {
     int overlap = qlen0 - 1;
 
     PartitionedRefs part_refs = partition_references(
-        orig_refs, orig_ref_lens, num_orig_refs,
+        gpu_refs, gpu_ref_lens, num_orig_refs,
         overlap, CHUNK_SIZE, PARTITION_THRESHOLD
     );
 
@@ -546,7 +546,7 @@ int main() {
 
             // print block exactly as requested
             printf("----------------------------------------------------------------------------\n");
-            printf("Pair: Q%d(%d) Vs R%d(%d)\n", q+1, q_lens[q], orig+1, orig_ref_lens[orig]);
+            printf("Pair: Q%d(%d) Vs R%d(%d)\n", q+1, q_lens[q], orig+1, gpu_ref_lens[orig]);
             printf("Number of Hits: %zu\n", acc_n);
             if (acc_n > 0) {
                 printf("Hit Indexes: [");

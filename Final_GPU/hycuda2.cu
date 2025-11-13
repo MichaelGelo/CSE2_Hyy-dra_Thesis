@@ -312,6 +312,8 @@ void* run_hyyro_gpu(void* args) {
     // Original reference lengths
     int* orig_ref_lens = (int*)malloc(num_orig_refs * sizeof(int));
     for (int i = 0; i < num_orig_refs; ++i) orig_ref_lens[i] = (int)strlen(orig_refs[i]);
+    for (int i = 0; i < num_orig_refs; ++i) 
+    printf("orig_ref_lens[%d] = %d\n", i, orig_ref_lens[i]);
 
     // Partition original refs for GPU
     int qlen0 = (int)strlen(query_seqs[0]);
@@ -562,7 +564,7 @@ int main() {
         .num_queries = num_queries,
         .num_orig_refs = num_orig_refs,
         .query_seqs = query_seqs,
-        .orig_refs = orig_refs
+        .orig_refs = gpu_refs
     };
 
     // Create GPU thread

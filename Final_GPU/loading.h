@@ -9,12 +9,12 @@
 
 // ================= USER DEFINES =================
 #define QUERY_FILE     "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/Queries/que5_256.fasta"
-#define REFERENCE_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/References/ref1_500k.fasta"
+#define REFERENCE_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/References/ref3_10M.fasta"
 #define FPGA_OUTPUT_DIR "./fpga_splits/"
 
 // Speed ratio for splitting reference
-#define FPGA_SPEED_RATIO 0.1f
-#define GPU_SPEED_RATIO  0.9f
+#define FPGA_SPEED_RATIO 0.9f
+#define GPU_SPEED_RATIO  0.1f
 // ===============================================
 
 // Utility: write sequence to FASTA (line width 60)
