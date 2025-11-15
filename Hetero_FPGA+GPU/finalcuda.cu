@@ -332,10 +332,21 @@ __global__ void levenshtein_kernel_shared_agg(
 }
 
 typedef struct {
+    // Input parameters
     int num_queries;
     int num_orig_refs;
     char **query_seqs;
     char **orig_refs;
+    
+    // Output parameters - ADD THESE
+    int* output_lowest_scores;      // Array: num_queries * num_orig_refs
+    int** output_lowest_indices;    // Array of arrays for each query-ref pair
+    int* output_lowest_counts;      // Array: num_queries * num_orig_refs
+    int* output_last_scores;        // Array: num_queries * num_orig_refs
+    int** output_hit_indices;       // Array of arrays for each query-ref pair
+    int* output_hit_counts;         // Array: num_queries * num_orig_refs
+    double avg_execution_time;
+    int success;                    // 1 = success, 0 = failure
 } GPUArgs;
 
 void* run_hyyro_gpu(void* args) {
@@ -553,79 +564,83 @@ void* run_hyyro_gpu(void* args) {
         }
     }
 
+    // ALLOCATE OUTPUT ARRAYS
+    long long total_pairs = (long long)num_queries * num_orig_refs;
+    
+    gpu_args->output_lowest_scores = (int*)malloc(total_pairs * sizeof(int));
+    gpu_args->output_lowest_counts = (int*)malloc(total_pairs * sizeof(int));
+    gpu_args->output_last_scores = (int*)malloc(total_pairs * sizeof(int));
+    gpu_args->output_hit_counts = (int*)malloc(total_pairs * sizeof(int));
+    gpu_args->output_lowest_indices = (int**)malloc(total_pairs * sizeof(int*));
+    gpu_args->output_hit_indices = (int**)malloc(total_pairs * sizeof(int*));
+    
+    // Copy simple arrays
+    memcpy(gpu_args->output_lowest_scores, h_lowest_score_orig, total_pairs * sizeof(int));
+    memcpy(gpu_args->output_lowest_counts, h_lowest_count_orig, total_pairs * sizeof(int));
+    memcpy(gpu_args->output_last_scores, h_last_score_orig, total_pairs * sizeof(int));
+
+
     // Aggregate hits per original ref on host (dedupe & sort)
-    printf("\n=== Results ===\n");
     for (int q = 0; q < num_queries; ++q) {
         for (int orig = 0; orig < num_orig_refs; ++orig) {
-            // gather hits across all chunks that map to this original ref
+            long long idx = (long long)q * num_orig_refs + orig;
+            
+            // -------- Aggregate hit indices (exact matches) --------
             size_t cap = 4096;
             int *acc = (int*)malloc(sizeof(int) * cap);
             size_t acc_n = 0;
-            int min_dist = INT_MAX;
-
+            
             for (int ci_idx = 0; ci_idx < orig_chunk_counts[orig]; ++ci_idx) {
                 int chunk_id = orig_chunk_lists[orig][ci_idx];
                 long long pair_idx = (long long)q * num_chunks + chunk_id;
                 int zc = h_pair_zcounts[pair_idx];
-                int dist = h_pair_distances[pair_idx];
-                if (dist < min_dist) min_dist = dist;
+                
                 for (int k = 0; k < zc && k < MAX_HITS; ++k) {
                     int val = h_pair_zindices[pair_idx * MAX_HITS + k];
                     if (val >= 0) {
-                        if (acc_n >= cap) { cap *= 2; acc = (int*)realloc(acc, sizeof(int) * cap); }
+                        if (acc_n >= cap) { 
+                            cap *= 2; 
+                            acc = (int*)realloc(acc, sizeof(int) * cap); 
+                        }
                         acc[acc_n++] = val;
                     }
                 }
             }
-
-            // dedupe & sort
+            
+            // Sort and deduplicate hits
             if (acc_n > 0) {
                 qsort(acc, acc_n, sizeof(int), compare_ints);
                 size_t write = 1;
-                for (size_t i = 1; i < acc_n; ++i) if (acc[i] != acc[write-1]) acc[write++] = acc[i];
+                for (size_t i = 1; i < acc_n; ++i) 
+                    if (acc[i] != acc[write-1]) acc[write++] = acc[i];
                 acc_n = write;
             }
-
-            // print block exactly as requested
-        printf("----------------------------------------------------------------------------\n");
-        printf("Pair: Q%d(%d) Vs R%d(%d)\n", q+1, q_lens[q], orig+1, orig_ref_lens[orig]);
-        printf("Number of Hits: %zu\n", acc_n);
-        if (acc_n > 0) {
-            printf("Hit Indexes: [");
-            for (size_t i = 0; i < acc_n; ++i) {
-                if (i) printf(",");
-                printf("%d", acc[i]);
+            
+            // Store hits in output
+            gpu_args->output_hit_counts[idx] = acc_n;
+            if (acc_n > 0) {
+                gpu_args->output_hit_indices[idx] = (int*)malloc(acc_n * sizeof(int));
+                memcpy(gpu_args->output_hit_indices[idx], acc, acc_n * sizeof(int));
+            } else {
+                gpu_args->output_hit_indices[idx] = NULL;
             }
-            printf("]\n");
-        } else {
-            printf("Hit Indexes: N/A\n");
-        }
-
-        // Print ALL lowest score indexes
-        long long orig_pair_idx = (long long)q * num_orig_refs + orig;
-        int lowest_gpu = h_lowest_score_orig[orig_pair_idx];
-        int lowest_cnt = h_lowest_count_orig[orig_pair_idx];
-        
-        if (lowest_gpu == 0x7f7f7f7f) {
-            printf("Lowest Score: N/A\n");
-            printf("Lowest Score Indexes: N/A\n");
-        } else {
-            printf("Lowest Score: %d\n", lowest_gpu);
+            
+            // -------- Process lowest score indices --------
+            int lowest_cnt = h_lowest_count_orig[idx];
             
             if (lowest_cnt > 0) {
-                // Collect and deduplicate lowest indexes
-                long long indices_base = orig_pair_idx * MAX_HITS;
+                long long indices_base = idx * MAX_HITS;
                 int* lowest_arr = (int*)malloc(sizeof(int) * MIN(lowest_cnt, MAX_HITS));
                 int valid_count = 0;
                 
                 for (int k = 0; k < MIN(lowest_cnt, MAX_HITS); ++k) {
-                    int idx = h_lowest_indices_orig[indices_base + k];
-                    if (idx >= 0) {
-                        lowest_arr[valid_count++] = idx;
+                    int idx_val = h_lowest_indices_orig[indices_base + k];
+                    if (idx_val >= 0) {
+                        lowest_arr[valid_count++] = idx_val;
                     }
                 }
                 
-                // Sort and deduplicate
+                // Sort and deduplicate lowest indices
                 if (valid_count > 0) {
                     qsort(lowest_arr, valid_count, sizeof(int), compare_ints);
                     int write = 1;
@@ -636,32 +651,80 @@ void* run_hyyro_gpu(void* args) {
                     }
                     valid_count = write;
                     
-                    printf("Lowest Score Indexes: [");
-                    for (int i = 0; i < valid_count; ++i) {
-                        if (i) printf(",");
-                        printf("%d", lowest_arr[i]);
-                    }
-                    printf("]\n");
+                    // Store in output
+                    gpu_args->output_lowest_indices[idx] = (int*)malloc(valid_count * sizeof(int));
+                    memcpy(gpu_args->output_lowest_indices[idx], lowest_arr, valid_count * sizeof(int));
+                    gpu_args->output_lowest_counts[idx] = valid_count; // Update with actual count
+                } else {
+                    gpu_args->output_lowest_indices[idx] = NULL;
+                    gpu_args->output_lowest_counts[idx] = 0;
                 }
                 
                 free(lowest_arr);
             } else {
-                printf("Lowest Score Indexes: N/A\n");
+                gpu_args->output_lowest_indices[idx] = NULL;
             }
+            
+            free(acc);
         }
-
-        int last_gpu = h_last_score_orig[orig_pair_idx];
-        if (last_gpu == 0x7f7f7f7f) {
-            printf("Last Score: N/A\n");
-        } else {
-            printf("Last Score: %d\n", last_gpu);
-        }
-
-        printf("----------------------------------------------------------------------------\n");
-        free(acc);
     }
-}
 
+    // Store execution time
+    gpu_args->avg_execution_time = avg_time;
+    gpu_args->success = 1;
+    
+    // NOW print results (using the stored output)
+    printf("\n=== GPU Results ===\n");
+    for (int q = 0; q < num_queries; ++q) {
+        for (int orig = 0; orig < num_orig_refs; ++orig) {
+            long long idx = (long long)q * num_orig_refs + orig;
+            
+            printf("----------------------------------------------------------------------------\n");
+            printf("Pair: Q%d(%d) Vs R%d(%d)\n", q+1, q_lens[q], orig+1, orig_ref_lens[orig]);
+            printf("Number of Hits: %d\n", gpu_args->output_hit_counts[idx]);
+            
+            if (gpu_args->output_hit_counts[idx] > 0) {
+                printf("Hit Indexes: [");
+                for (int i = 0; i < gpu_args->output_hit_counts[idx]; ++i) {
+                    if (i) printf(",");
+                    printf("%d", gpu_args->output_hit_indices[idx][i]);
+                }
+                printf("]\n");
+            } else {
+                printf("Hit Indexes: N/A\n");
+            }
+            
+            int lowest_score = gpu_args->output_lowest_scores[idx];
+            int lowest_cnt = gpu_args->output_lowest_counts[idx];
+            
+            if (lowest_score == 0x7f7f7f7f) {
+                printf("Lowest Score: N/A\n");
+                printf("Lowest Score Indexes: N/A\n");
+            } else {
+                printf("Lowest Score: %d\n", lowest_score);
+                
+                if (lowest_cnt > 0 && gpu_args->output_lowest_indices[idx] != NULL) {
+                    printf("Lowest Score Indexes: [");
+                    for (int i = 0; i < lowest_cnt; ++i) {
+                        if (i) printf(",");
+                        printf("%d", gpu_args->output_lowest_indices[idx][i]);
+                    }
+                    printf("]\n");
+                } else {
+                    printf("Lowest Score Indexes: N/A\n");
+                }
+            }
+            
+            int last_score = gpu_args->output_last_scores[idx];
+            if (last_score == 0x7f7f7f7f) {
+                printf("Last Score: N/A\n");
+            } else {
+                printf("Last Score: %d\n", last_score);
+            }
+            
+            printf("----------------------------------------------------------------------------\n");
+        }
+    }
     printf("\n%d loop Average time: %.6f sec.\n", loope, avg_time);
 
     // cleanup
@@ -713,7 +776,15 @@ int main() {
         .num_queries = num_queries,
         .num_orig_refs = num_orig_refs,
         .query_seqs = query_seqs,
-        .orig_refs = gpu_refs
+        .orig_refs = gpu_refs,
+        .output_lowest_scores = NULL,
+        .output_lowest_indices = NULL,
+        .output_lowest_counts = NULL,
+        .output_last_scores = NULL,
+        .output_hit_indices = NULL,
+        .output_hit_counts = NULL,
+        .avg_execution_time = 0.0,
+        .success = 0
     };
 
     // Create GPU thread
@@ -741,17 +812,101 @@ int main() {
     printf("Overlay load time: %.2f ms\n", result.overlay_load_ms);
     printf("Total execution time: %.2f ms\n", result.total_exec_ms);
 
+    // Wait for GPU thread to finish before accessing its results
+    pthread_join(gpu_thread, NULL);
+
+    // ==== MERGED RESULTS ====
+    int q = 0;
+    int r = 0;
+    long long idx = (long long)q * num_orig_refs + r;
+
+    int lowest_gpu = gpu_args.output_lowest_scores[idx];
+    int lowest_fpga = result.lowest_score;
+
+    int final_merged_lowest_score = -1;     // The merged lowest score
+    int* final_merged_lowest_indices = NULL; // Array of merged lowest indexes
+    int final_merged_index_count = 0;        // Count of merged indexes
+
+    printf("\n\n===== Merged Results =====\n\n");
+
+    if (lowest_gpu != 0x7f7f7f7f && lowest_fpga != -1) {
+        final_merged_lowest_score = MIN(lowest_gpu, lowest_fpga);
+    } else if (lowest_gpu != 0x7f7f7f7f) {
+        final_merged_lowest_score = lowest_gpu;
+    } else {
+        final_merged_lowest_score = lowest_fpga;
+    }
+
+    // Count how many indexes we'll have
+    int total_index_count = 0;
+    if (final_merged_lowest_score != -1) {
+        if (lowest_gpu == final_merged_lowest_score) {
+            total_index_count += gpu_args.output_lowest_counts[idx];
+        }
+        if (lowest_fpga == final_merged_lowest_score) {
+            total_index_count += result.num_lowest_indexes;
+        }
+    }
+
+    if (total_index_count > 0) {
+        final_merged_lowest_indices = (int*)malloc(total_index_count * sizeof(int));
+        int write_pos = 0;
+
+        // Add GPU indexes if they match the merged lowest score
+        if (lowest_gpu == final_merged_lowest_score) {
+            for (int i = 0; i < gpu_args.output_lowest_counts[idx]; ++i) {
+                final_merged_lowest_indices[write_pos++] = gpu_args.output_lowest_indices[idx][i];
+            }
+        }
+
+        // Add FPGA indexes if they match the merged lowest score
+        if (lowest_fpga == final_merged_lowest_score) {
+            int gpu_len = (int)(strlen(orig_refs[r]) * GPU_SPEED_RATIO);
+            for (size_t i = 0; i < result.num_lowest_indexes; ++i) {
+                // Adjust FPGA index by adding the length of the GPU part
+                final_merged_lowest_indices[write_pos++] = result.lowest_indexes[i] + gpu_len - 255;
+            }
+        }
+
+        final_merged_index_count = write_pos;
+
+        // Optional: Sort the merged indexes
+        qsort(final_merged_lowest_indices, final_merged_index_count, sizeof(int), compare_ints);
+    }
+
+    // Print the merged results
+    printf("Final Merged Results for Q%d vs R%d:\n", q+1, r+1);
+    printf("Final Lowest Score: %d\n", final_merged_lowest_score);
+    printf("Lowest Score Indexes: [");
+    for (int i = 0; i < final_merged_index_count; ++i) {
+        if (i > 0) printf(", ");
+        printf("%d", final_merged_lowest_indices[i]);
+    }
+    printf("]\n");
+    printf("Total Lowest Index Count: %d\n", final_merged_index_count);
+    printf("Last Index Score: %d", result.final_score);
+
     // Clean up dynamically allocated memory
     free_fpga_result(&result);
 
-    // Wait for GPU thread to finish
-    pthread_join(gpu_thread, NULL);
+    // Cleanup GPU results
+    for(long long i = 0; i < (long long)num_queries * num_orig_refs; ++i) {
+        if(gpu_args.output_hit_indices[i]) free(gpu_args.output_hit_indices[i]);
+        if(gpu_args.output_lowest_indices[i]) free(gpu_args.output_lowest_indices[i]);
+    }
 
     // Cleanup queries/references
     for (int i = 0; i < num_queries; ++i) free(query_seqs[i]);
     free(query_seqs);
     for (int i = 0; i < num_orig_refs; ++i) free(orig_refs[i]);
     free(orig_refs);
+
+    free(gpu_args.output_lowest_scores);
+    free(gpu_args.output_lowest_indices);
+    free(gpu_args.output_lowest_counts);
+    free(gpu_args.output_last_scores);
+    free(gpu_args.output_hit_indices);
+    free(gpu_args.output_hit_counts);
 
     return 0;
 }

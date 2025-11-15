@@ -1,469 +1,697 @@
-// CUDA_Multiple3.cu
-// Hyyrö-style Damerau (adjacent transpositions) extension of your 256-bit Myers-based kernel.
-// Modified to track indices where lowest score occurs.
-// Batch processing removed - processes all pairs in single kernel launch.
+// unified_leven_partitioned_gpu.cu
+// Hyyrö bit-vector Levenshtein with GPU-side aggregation using partition_utils.h
+// Compile:
+//   nvcc -O3 unified_leven_partitioned_gpu.cu C_utils.c -o unified_leven_partitioned_gpu
+//
+// Run:
+//   ./unified_leven_partitioned_gpu
 
-#include <cuda_runtime.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
+#include <limits.h>
+#include <sys/time.h>
+#include <cuda_runtime.h>
 #include "C_utils.h"
+#include "partition.h"
+#include "loading.h"
 
-#define MAX_LENGTH 256
-#define BV_WORDS 4   // 4 * 64 = 256
-typedef unsigned long long u64;
 
-// params to change here ↓↓↓
 
-#define query_file "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/Queries/que4_256.fasta"
-#define reference_file "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/References/ref2_1M.fasta"
-#define threadsPerBlock 128
+#define MAX_LENGTH (1 << 24)   // per-slot buffer size (must be >= longest chunk)
+#define MAX_HITS 1024
+
+// ============= USER PARAMETERS =============
+#define threadsPerBlock 256
 #define loope 10
-#define maxZeros 2048
-#define maxLowestIndices 2048  // max indices to track for lowest score
-// params to change here ↑↑↑
+#define CHUNK_SIZE 166700
+#define PARTITION_THRESHOLD 1000000
+// ===========================================
 
+#define BV_WORDS 4
+typedef struct { uint64_t w[BV_WORDS]; } bv_t;
 
-struct BitVec256 {
-    u64 w[BV_WORDS];
-};
+#define MIN(a,b) ((a) < (b) ? (a) : (b))
 
-__device__ inline void bv_zero(BitVec256 &a) {
-    for (int i = 0; i < BV_WORDS; ++i) a.w[i] = 0ULL;
-}
-__device__ inline void bv_set_all(BitVec256 &a) {
-    for (int i = 0; i < BV_WORDS; ++i) a.w[i] = ~0ULL;
-}
-__device__ inline void bv_copy(const BitVec256 &src, BitVec256 &dst) {
-    for (int i = 0; i < BV_WORDS; ++i) dst.w[i] = src.w[i];
-}
-__device__ inline void bv_or(const BitVec256 &a, const BitVec256 &b, BitVec256 &r) {
-    for (int i = 0; i < BV_WORDS; ++i) r.w[i] = a.w[i] | b.w[i];
-}
-__device__ inline void bv_and(const BitVec256 &a, const BitVec256 &b, BitVec256 &r) {
-    for (int i = 0; i < BV_WORDS; ++i) r.w[i] = a.w[i] & b.w[i];
-}
-__device__ inline void bv_xor(const BitVec256 &a, const BitVec256 &b, BitVec256 &r) {
-    for (int i = 0; i < BV_WORDS; ++i) r.w[i] = a.w[i] ^ b.w[i];
-}
-__device__ inline void bv_not(const BitVec256 &a, BitVec256 &r) {
-    for (int i = 0; i < BV_WORDS; ++i) r.w[i] = ~a.w[i];
+#define CUDA_CHECK(call) \
+do { \
+    cudaError_t err = call; \
+    if (err != cudaSuccess) { \
+        fprintf(stderr, "CUDA error at %s:%d: %s\n", __FILE__, __LINE__, cudaGetErrorString(err)); \
+        exit(1); \
+    } \
+} while (0)
+
+static double now_seconds() {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return tv.tv_sec + tv.tv_usec * 1e-6;
 }
 
-// left shift by 1: r = a << 1  (bits move toward higher indices)
-__device__ inline void bv_shl1(const BitVec256 &a, BitVec256 &r) {
-    u64 carry = 0ULL;
-    for (int i = 0; i < BV_WORDS; ++i) {
-        u64 new_carry = (a.w[i] >> 63) & 1ULL;
-        r.w[i] = (a.w[i] << 1) | carry;
-        carry = new_carry;
-    }
+static int compare_ints(const void *a, const void *b) {
+    int av = *(const int*)a;
+    int bv = *(const int*)b;
+    if (av < bv) return -1;
+    if (av > bv) return 1;
+    return 0;
 }
 
-// right shift by 1: r = a >> 1  (bits move toward lower indices)
-__device__ inline void bv_shr1(const BitVec256 &a, BitVec256 &r) {
-    u64 carry = 0ULL;
-    for (int i = BV_WORDS - 1; i >= 0; --i) {
-        u64 new_carry = (a.w[i] & 1ULL);
-        r.w[i] = (a.w[i] >> 1) | (carry << 63);
-        carry = new_carry;
-    }
+// ---------- BV helpers ----------
+static __forceinline__ __host__ __device__ void bv_set_all_unrolled(bv_t* out, uint64_t v) {
+    out->w[0] = v; out->w[1] = v; out->w[2] = v; out->w[3] = v;
+}
+static __forceinline__ __host__ __device__ void bv_clear_unrolled(bv_t* out) {
+    out->w[0] = 0ULL; out->w[1] = 0ULL; out->w[2] = 0ULL; out->w[3] = 0ULL;
+}
+static __forceinline__ __host__ __device__ void bv_copy_unrolled(bv_t* out, const bv_t* in) {
+    out->w[0] = in->w[0]; out->w[1] = in->w[1]; out->w[2] = in->w[2]; out->w[3] = in->w[3];
+}
+static __forceinline__ __host__ __device__ void bv_or_unrolled(bv_t* out, const bv_t* a, const bv_t* b) {
+    out->w[0] = a->w[0] | b->w[0];
+    out->w[1] = a->w[1] | b->w[1];
+    out->w[2] = a->w[2] | b->w[2];
+    out->w[3] = a->w[3] | b->w[3];
+}
+static __forceinline__ __host__ __device__ void bv_and_unrolled(bv_t* out, const bv_t* a, const bv_t* b) {
+    out->w[0] = a->w[0] & b->w[0];
+    out->w[1] = a->w[1] & b->w[1];
+    out->w[2] = a->w[2] & b->w[2];
+    out->w[3] = a->w[3] & b->w[3];
+}
+static __forceinline__ __host__ __device__ void bv_xor_unrolled(bv_t* out, const bv_t* a, const bv_t* b) {
+    out->w[0] = a->w[0] ^ b->w[0];
+    out->w[1] = a->w[1] ^ b->w[1];
+    out->w[2] = a->w[2] ^ b->w[2];
+    out->w[3] = a->w[3] ^ b->w[3];
+}
+static __forceinline__ __host__ __device__ void bv_not_unrolled(bv_t* out, const bv_t* a) {
+    out->w[0] = ~(a->w[0]); out->w[1] = ~(a->w[1]); out->w[2] = ~(a->w[2]); out->w[3] = ~(a->w[3]);
+}
+static __forceinline__ __host__ __device__ void bv_shl1_unrolled(bv_t* out, const bv_t* in) {
+    uint64_t c0 = in->w[0] >> 63;
+    uint64_t c1 = in->w[1] >> 63;
+    uint64_t c2 = in->w[2] >> 63;
+    out->w[0] = (in->w[0] << 1);
+    out->w[1] = (in->w[1] << 1) | c0;
+    out->w[2] = (in->w[2] << 1) | c1;
+    out->w[3] = (in->w[3] << 1) | c2;
+}
+static __forceinline__ __host__ __device__ void bv_shr1_unrolled(bv_t* out, const bv_t* in) {
+    uint64_t c3 = in->w[3] & 1ULL;
+    uint64_t c2 = in->w[2] & 1ULL;
+    uint64_t c1 = in->w[1] & 1ULL;
+    out->w[3] = (in->w[3] >> 1);
+    out->w[2] = (in->w[2] >> 1) | (c3 << 63);
+    out->w[1] = (in->w[1] >> 1) | (c2 << 63);
+    out->w[0] = (in->w[0] >> 1) | (c1 << 63);
 }
 
-// 256-bit add: r = a + b
-// returns final carry-out (0 or 1)
-__device__ inline unsigned int bv_add(const BitVec256 &a, const BitVec256 &b, BitVec256 &r) {
-    u64 carry = 0ULL;
-    for (int i = 0; i < BV_WORDS; ++i) {
-        u64 ai = a.w[i];
-        u64 bi = b.w[i];
-        u64 sum = ai + bi + carry;
-        // detect carry: if (sum < ai) or (carry already set and sum == ai)
-        carry = (sum < ai) || (carry && sum == ai);
-        r.w[i] = sum;
-    }
-    return (unsigned int)carry;
+static __forceinline__ __host__ __device__ int bv_test_top_unrolled(const bv_t* v, int query_length) {
+    int idx = (query_length - 1) / 64;
+    int bit = (query_length - 1) % 64;
+    if (idx == 0) return ((v->w[0] >> bit) & 1ULL) ? 1 : 0;
+    if (idx == 1) return ((v->w[1] >> bit) & 1ULL) ? 1 : 0;
+    if (idx == 2) return ((v->w[2] >> bit) & 1ULL) ? 1 : 0;
+    return ((v->w[3] >> bit) & 1ULL) ? 1 : 0;
 }
+static __forceinline__ __host__ __device__ uint64_t bv_add_unrolled(bv_t* out, const bv_t* a, const bv_t* b) {
+    uint64_t carry = 0ULL;
 
-// r = a + b where b is Pv in the original formula; we sometimes only need r
-// Helper: compute ((Xv & Pv) + Pv)  -> use bv_and then bv_add
-__device__ inline void bv_and_add(const BitVec256 &Xv, const BitVec256 &Pv, BitVec256 &tmp, BitVec256 &out) {
-    bv_and(Xv, Pv, tmp);    // tmp = Xv & Pv
-    bv_add(tmp, Pv, out);   // out = tmp + Pv  (carry ignored)
+    uint64_t sum0 = a->w[0] + b->w[0];
+    carry = (sum0 < a->w[0]);
+    out->w[0] = sum0;
+
+    uint64_t sum1 = a->w[1] + b->w[1] + carry;
+    carry = (sum1 < a->w[1]) || (sum1 == a->w[1] && carry);
+    out->w[1] = sum1;
+
+    uint64_t sum2 = a->w[2] + b->w[2] + carry;
+    carry = (sum2 < a->w[2]) || (sum2 == a->w[2] && carry);
+    out->w[2] = sum2;
+
+    uint64_t sum3 = a->w[3] + b->w[3] + carry;
+    carry = (sum3 < a->w[3]) || (sum3 == a->w[3] && carry);
+    out->w[3] = sum3;
+
+    return carry;
 }
 
 // mask bits above m-1 to zero (so bits >= m are cleared)
-__device__ inline void bv_mask_top(BitVec256 &v, int m) {
-    if (m >= MAX_LENGTH) return; // no masking needed
+static __forceinline__ __host__ __device__ void bv_mask_top(bv_t *v, int m) {
+    if (m >= 64 * BV_WORDS) return; // no masking needed
     int last_word = (m - 1) / 64;
     int last_bit = (m - 1) % 64;
-    u64 last_mask = (last_bit == 63) ? ~0ULL : ((1ULL << (last_bit + 1)) - 1ULL);
+    uint64_t last_mask = (last_bit == 63) ? ~0ULL : ((1ULL << (last_bit + 1)) - 1ULL);
 
-    for (int i = last_word + 1; i < BV_WORDS; ++i) v.w[i] = 0ULL;
-    v.w[last_word] &= last_mask;
+    for (int i = last_word + 1; i < BV_WORDS; ++i) v->w[i] = 0ULL;
+    v->w[last_word] &= last_mask;
 }
 
-// test whether bit (m-1) is set in v: returns 0 or non-zero
-__device__ inline int bv_test_msb(const BitVec256 &v, int m) {
-    int idx = (m - 1) / 64;
-    int off = (m - 1) % 64;
-    return ( (v.w[idx] >> off) & 1ULL ) ? 1 : 0;
-}
+// ---------- Bit-vector Levenshtein (from hycuda.cu) ----------
+static __forceinline__ __host__ __device__ int bit_vector_levenshtein_local(
+    int query_length,
+    const char* reference,
+    int reference_length,
+    const bv_t* Eq,
+    int* zero_indices,
+    int* zero_count,
+    int* lowest_score,
+    int* lowest_indices,
+    int* lowest_count)
+{
+    if (query_length > 64 * BV_WORDS || query_length <= 0) return -1;
 
-// Device kernel: one thread per query-reference pair
-__global__ void bit_vector_levenshtein_256_kernel(
-    const char *queries_flat,    // concatenated queries
-    const char *refs_flat,       // concatenated references
-    const int *q_off, const int *r_off,
-    const int *q_len, const int *r_len,
-    BitVec256 *Eq_table,         // Eq_table[256] per thread
-    int *results,
-    int *lowest_scores,
-    int *zero_counts,
-    int *zero_indices,           // flattened: zero_indices[ tid * maxZeros + z ]
-    int *lowest_counts,          // count of lowest score indices
-    int *lowest_indices,         // flattened: lowest_indices[ tid * maxLowestIndices + l ]
-    int maxZerosPerPair,
-    int maxLowestPerPair
-) {
-    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    bv_t Pv, Mv, Xv, Xh, Ph, Mh;
+    bv_t PrevEqMask, trans_mask, tmp, addtmp, t1, t2;
 
-    // Load lengths
-    int m = q_len[tid];
-    int n = r_len[tid];
+    bv_set_all_unrolled(&Pv, ~0ULL);
+    bv_clear_unrolled(&Mv);
+    bv_clear_unrolled(&PrevEqMask);
+    bv_clear_unrolled(&trans_mask);
 
-    if (m <= 0) { 
-        results[tid] = 0; 
-        lowest_scores[tid] = 0; 
-        zero_counts[tid] = 0; 
-        lowest_counts[tid] = 0;
-        return; 
-    }
-    if (m > MAX_LENGTH) { 
-        results[tid] = -1; 
-        lowest_scores[tid] = -1; 
-        zero_counts[tid] = 0; 
-        lowest_counts[tid] = 0;
-        return; 
-    }
+    bv_mask_top(&Pv, query_length);
 
-    const char *query = queries_flat + q_off[tid];
-    const char *ref   = refs_flat + r_off[tid];
+    *zero_count = 0;
+    *lowest_count = 0;
+    int score = query_length;
+    *lowest_score = score;
 
-    // local per-thread vectors
-    BitVec256 Pv, Mv, Xv, Xh, Ph, Mh, tmp, addtmp;
-    // extra temps for Damerau handling
-    BitVec256 PrevEqMask;   // Eq mask of previous reference character
-    BitVec256 trans_mask;   // mask marking positions that may allow transposition
-    BitVec256 t1, t2;
-
-    // Eq for each possible byte value
-    BitVec256 *Eq = Eq_table + (size_t)tid * 256; // Eq[256] for this thread
-
-    // init Eq to zero
-    for (int c = 0; c < 256; ++c) bv_zero(Eq[c]);
-
-    // Build Eq: for each position i set bit i in Eq[ query[i] ]
-    for (int i = 0; i < m; ++i) {
-        unsigned char ch = (unsigned char)query[i];
-        int word = i / 64;
-        int bit  = i % 64;
-        Eq[ch].w[word] |= (1ULL << bit);
-    }
-
-    // initialize Pv = all ones, Mv = zero
-    bv_set_all(Pv);
-    bv_zero(Mv);
-    bv_zero(PrevEqMask);
-    bv_zero(trans_mask);
-
-    // mask Pv bits above m (Pv should have only m meaningful bits set)
-    bv_mask_top(Pv, m);
-
-    int score = m;
-    int lowest = m;
-    int zeros = 0;
-    int lowest_count = 0;
-
-    unsigned char prev_rc = 0; // previous reference char (for transposition detection)
+    unsigned char prev_rc = 0;
     bool have_prev = false;
 
-    // loop over reference
-    for (int j = 0; j < n; ++j) {
-        unsigned char rc = (unsigned char)ref[j];
+    for (int j = 0; j < reference_length; ++j) {
+        unsigned char c = (unsigned char)reference[j];
+        const bv_t* Eqc = &Eq[c];
 
-        // Standard Myers parts (compute Xv etc.)
-        // Xv = Eq[rc] | Mv
-        bv_or(Eq[rc], Mv, Xv);
+        // Standard Myers/Hyyrö
+        bv_or_unrolled(&Xv, Eqc, &Mv);
 
-        // Xh = (((Xv & Pv) + Pv) ^ Pv) | Xv | Mv
-        bv_and_add(Xv, Pv, tmp, addtmp);   // addtmp = (Xv & Pv) + Pv
-        bv_xor(addtmp, Pv, Xh);            // Xh = addtmp ^ Pv
-        // Xh = Xh | Xv | Mv
-        BitVec256 temp_or;
-        bv_or(Xh, Xv, temp_or);
-        bv_or(temp_or, Mv, Xh);
+        bv_and_unrolled(&tmp, &Xv, &Pv);
+        bv_add_unrolled(&addtmp, &tmp, &Pv);
+        bv_xor_unrolled(&Xh, &addtmp, &Pv);
+        bv_or_unrolled(&Xh, &Xh, &Xv);
+        bv_or_unrolled(&Xh, &Xh, &Mv);
 
-        // Ph = Mv | ~(Xh | Pv)
-        BitVec256 xh_or_pv;
-        bv_or(Xh, Pv, xh_or_pv);
-        bv_not(xh_or_pv, tmp);      // tmp = ~(Xh | Pv)
-        bv_or(Mv, tmp, Ph);
+        bv_or_unrolled(&tmp, &Xh, &Pv);
+        bv_not_unrolled(&t1, &tmp);
+        bv_or_unrolled(&Ph, &Mv, &t1);
 
-        // Mh = Xh & Pv
-        bv_and(Xh, Pv, Mh);
+        bv_and_unrolled(&Mh, &Pv, &Xh);
 
-        // Score updates depend on bit (m-1) of Ph and Mh
-        if (bv_test_msb(Ph, m)) score++;
-        if (bv_test_msb(Mh, m)) score--;
+        if (bv_test_top_unrolled(&Ph, query_length)) ++score;
+        if (bv_test_top_unrolled(&Mh, query_length)) --score;
 
-        // Track lowest score indices
-        if (score < lowest) {
-            // New lowest found - reset count and start fresh
-            lowest = score;
-            lowest_count = 0;
-            if (lowest_count < maxLowestPerPair) {
-                lowest_indices[tid * maxLowestPerPair + lowest_count] = j;
-                lowest_count++;
-            }
-        } else if (score == lowest) {
-            // Same lowest score - add this index
-            if (lowest_count < maxLowestPerPair) {
-                lowest_indices[tid * maxLowestPerPair + lowest_count] = j;
-                lowest_count++;
+        if (score < *lowest_score) {
+            *lowest_score = score;
+            *lowest_count = 0;
+            // Fall-through to add the first index
+        }
+        if (score == *lowest_score) {
+            if (*lowest_count < MAX_HITS) {
+                lowest_indices[*lowest_count] = j;
+                (*lowest_count)++;
             }
         }
 
-        // --- Damerau extension: detect adjacent transpositions and allow them ---
-        // compute PrevEqMask >> 1 into t1
         if (have_prev) {
-            bv_shr1(PrevEqMask, t1);       // t1 = PrevEqMask >> 1
-            bv_and(Eq[rc], t1, trans_mask); // trans_mask = Eq[rc] & (PrevEqMask >> 1)
+            bv_shr1_unrolled(&t1, &PrevEqMask);
+            bv_and_unrolled(&trans_mask, Eqc, &t1);
         } else {
-            bv_zero(trans_mask);
+            bv_clear_unrolled(&trans_mask);
         }
 
-        // Pv = Pv & ~trans_mask
-        bv_not(trans_mask, t2);
-        bv_and(Pv, t2, Pv);
+        bv_not_unrolled(&t2, &trans_mask);
+        bv_and_unrolled(&Pv, &Pv, &t2);
+        bv_or_unrolled(&Mv, &Mv, &trans_mask);
 
-        // Incorporate transposition candidates into Mv to allow recovery (Mv |= trans_mask)
-        bv_or(Mv, trans_mask, Mv);
+        bv_shl1_unrolled(&t1, &Mh);
+        bv_shl1_unrolled(&t2, &Ph);
+        bv_or_unrolled(&tmp, &Xh, &t2);
+        bv_not_unrolled(&addtmp, &tmp);
+        bv_or_unrolled(&Pv, &t1, &addtmp);
 
-        // Now continue with standard Myers update for Pv and Mv
-        // Pv = (Mh << 1) | ~(Xh | (Ph << 1))
-        BitVec256 Mh_shl, Ph_shl, xh_or_phshl, not_xh_or_phshl;
-        bv_shl1(Mh, Mh_shl);
-        bv_shl1(Ph, Ph_shl);
-        bv_or(Xh, Ph_shl, xh_or_phshl);
-        bv_not(xh_or_phshl, not_xh_or_phshl);
-        bv_or(Mh_shl, not_xh_or_phshl, Pv);
+        bv_and_unrolled(&Mv, &Xh, &t2);
 
-        // Mv = Xh & (Ph << 1)
-        bv_and(Xh, Ph_shl, Mv);
+        bv_mask_top(&Pv, query_length);
+        bv_mask_top(&Mv, query_length);
 
-        // mask Pv and Mv beyond m bits to keep high bits clean
-        bv_mask_top(Pv, m);
-        bv_mask_top(Mv, m);
-
-        // record zero score positions
-        if (score == 0 && zeros < maxZerosPerPair) {
-            zero_indices[tid * maxZerosPerPair + zeros] = j;
-            zeros++;
-        }
-
-        // update PrevEqMask to Eq[rc] for next iteration
-        bv_copy(Eq[rc], PrevEqMask);
+        bv_copy_unrolled(&PrevEqMask, Eqc);
         have_prev = true;
-        prev_rc = rc;
+        prev_rc = c;
+
+        if (score == 0) {
+            if (*zero_count < MAX_HITS) {
+                zero_indices[*zero_count] = j;
+                (*zero_count)++;
+            }
+        }
     }
 
-    results[tid] = score;
-    lowest_scores[tid] = lowest;
-    zero_counts[tid] = zeros;
-    lowest_counts[tid] = lowest_count;
+    return score;
 }
 
-/* ------------------------------
-   Host-side code
-   ------------------------------ */
+// ---------- Kernel ----------
+// Each block = a query. Each thread = strided chunks (where "reference" is a chunk)
+__global__ void levenshtein_kernel_shared_agg(
+    int num_queries, int num_chunks, int num_orig_refs,
+    const char* __restrict__ d_queries, const int* __restrict__ d_q_lens, const bv_t* __restrict__ d_Eq_queries,
+    const char* __restrict__ d_refs, const int* __restrict__ d_ref_lens,
+    const int* __restrict__ d_chunk_starts, const int* __restrict__ d_chunk_to_orig,
+    const int* __restrict__ d_orig_ref_lens,
+    int* __restrict__ d_pair_distances, int* __restrict__ d_pair_zcounts, int* __restrict__ d_pair_zindices,
+    int* __restrict__ d_lowest_score_orig, int* __restrict__ d_lowest_count_orig, int* __restrict__ d_lowest_indices_orig,
+    int* __restrict__ d_last_score_orig
+)
+{
+    extern __shared__ bv_t s_Eq[];
+    int q = blockIdx.x;
+    if (q >= num_queries) return;
+    int tid = threadIdx.x;
 
+    for (int i = tid; i < 256; i += blockDim.x) {
+        s_Eq[i] = d_Eq_queries[(long long)q * 256LL + i];
+    }
+    __syncthreads();
+
+    int qlen = d_q_lens[q];
+    for (int c = tid; c < num_chunks; c += blockDim.x) {
+        const char* refptr = &d_refs[(size_t)c * MAX_LENGTH];
+        int rlen = d_ref_lens[c];
+        int chunk_start = d_chunk_starts[c];
+        int orig = d_chunk_to_orig[c];
+        long long pair_idx = (long long)q * num_chunks + c;
+
+        int local_zero_indices[MAX_HITS];
+        int local_zero_count = 0;
+        int local_lowest_score = INT_MAX;
+        int local_lowest_indices[MAX_HITS];
+        int local_lowest_count = 0;
+
+        int dist = bit_vector_levenshtein_local(qlen, refptr, rlen, s_Eq,
+            local_zero_indices, &local_zero_count, 
+            &local_lowest_score, local_lowest_indices, &local_lowest_count);
+
+        // Write pair-level results
+        d_pair_distances[pair_idx] = dist;
+        d_pair_zcounts[pair_idx] = local_zero_count;
+        long long base_zptr = pair_idx * MAX_HITS;
+        for (int k = 0; k < local_zero_count && k < MAX_HITS; ++k) {
+            int global_pos = chunk_start + local_zero_indices[k];
+            d_pair_zindices[base_zptr + k] = global_pos;
+        }
+        for (int k = local_zero_count; k < MAX_HITS; ++k) {
+            d_pair_zindices[base_zptr + k] = -1;
+        }
+
+        // -------- GPU-side aggregation with ALL lowest indexes --------
+        long long orig_pair_idx = (long long)q * num_orig_refs + orig;
+        long long orig_indices_base = orig_pair_idx * MAX_HITS;
+
+        if (local_lowest_count > 0) {
+            // Try to update the lowest score atomically
+            int old_score = atomicMin(&d_lowest_score_orig[orig_pair_idx], local_lowest_score);
+            
+            // Now add all our lowest indexes if they match the current best
+            int current_best = d_lowest_score_orig[orig_pair_idx];
+            
+            if (local_lowest_score == current_best) {
+                // Add all our local_lowest_indices to the global array
+                for (int k = 0; k < local_lowest_count; ++k) {
+                    int global_lowest_pos = chunk_start + local_lowest_indices[k];
+                    
+                    // Atomically get a slot in the indices array
+                    int slot = atomicAdd(&d_lowest_count_orig[orig_pair_idx], 1);
+                    
+                    if (slot < MAX_HITS) {
+                        d_lowest_indices_orig[orig_indices_base + slot] = global_lowest_pos;
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ---------- Host main ----------
 int main() {
-    // Load queries
-    int num_queries = 0;
-    char **query_seqs = parse_fasta_file(query_file, &num_queries);
+    printf("=== Hyyrö Bit-Vector Levenshtein with Partitioning ===\n");
+    printf("Loading queries and references from memory using loading.h\n");
+    printf("Chunk size: %d\n", CHUNK_SIZE);
+    printf("Partition threshold: %d\n", PARTITION_THRESHOLD);
+    printf("Threads per block: %d\n", threadsPerBlock);
+    printf("Loop iterations: %d\n\n", loope);
 
-    // Load references
-    int num_references = 0;
-    char **reference_seqs = parse_fasta_file(reference_file, &num_references);
-    if (!reference_seqs) {
-        for (int i = 0; i < num_queries; i++) free(query_seqs[i]);
-        free(query_seqs);
+    int num_queries = 0;
+    int num_orig_refs = 0;
+
+    // read queries and original refs
+    char** query_seqs = load_queries(&num_queries);
+
+    char **gpu_refs = NULL;    // GPU in-memory sequences
+    int *gpu_ref_lens = NULL;
+    char** orig_refs = load_references_gpu_fpga(&num_orig_refs, &gpu_refs, &gpu_ref_lens);
+
+    printf("Loaded %d queries and %d references\n", num_queries, num_orig_refs);
+
+    // original lengths
+    int* orig_ref_lens = (int*)malloc(num_orig_refs * sizeof(int));
+    for (int i = 0; i < num_orig_refs; ++i) orig_ref_lens[i] = (int)strlen(orig_refs[i]);
+
+    // Partition original refs into chunks using partition_utils.h
+    int qlen0 = (int)strlen(query_seqs[0]); // assume queries similar length
+    int overlap = qlen0 - 1;
+
+    PartitionedRefs part_refs = partition_references(
+        orig_refs, orig_ref_lens, num_orig_refs,
+        overlap, CHUNK_SIZE, PARTITION_THRESHOLD
+    );
+
+    int num_chunks = part_refs.num_chunks;
+    int num_references = num_chunks; // kernel references = chunks
+
+    printf("Partitioned into %d chunks\n\n", num_chunks);
+
+    // build q_lens
+    int* q_lens = (int*)malloc(num_queries * sizeof(int));
+    for (int q = 0; q < num_queries; ++q) q_lens[q] = (int)strlen(query_seqs[q]);
+
+    // Precompute Eq host layout [q * 256 + ascii]
+    bv_t* h_Eq_queries = (bv_t*)malloc((size_t)num_queries * 256 * sizeof(bv_t));
+    if (!h_Eq_queries) { fprintf(stderr, "OOM Eq\n"); return -1; }
+    memset(h_Eq_queries, 0, (size_t)num_queries * 256 * sizeof(bv_t));
+    for (int q = 0; q < num_queries; ++q) {
+        int qlen = q_lens[q];
+        const char* qs = query_seqs[q];
+        for (int i = 0; i < qlen; ++i) {
+            unsigned char ch = (unsigned char)qs[i];
+            int word = i / 64;
+            int bit = i % 64;
+            h_Eq_queries[(long long)q * 256 + ch].w[word] |= (1ULL << bit);
+        }
+    }
+
+    // Build contiguous host buffers strided by MAX_LENGTH
+    size_t h_queries_bytes = (size_t)num_queries * MAX_LENGTH * sizeof(char);
+    size_t h_refs_bytes = (size_t)num_references * MAX_LENGTH * sizeof(char);
+    char* h_queries = (char*)malloc(h_queries_bytes);
+    char* h_refs = (char*)malloc(h_refs_bytes);
+    if (!h_queries || !h_refs) { fprintf(stderr, "OOM host buffers\n"); return -1; }
+    memset(h_queries, 0, h_queries_bytes);
+    memset(h_refs, 0, h_refs_bytes);
+    for (int q = 0; q < num_queries; ++q)
+        strncpy(&h_queries[(size_t)q * MAX_LENGTH], query_seqs[q], MIN((int)MAX_LENGTH - 1, q_lens[q]));
+    for (int r = 0; r < num_references; ++r)
+        strncpy(&h_refs[(size_t)r * MAX_LENGTH], part_refs.chunk_seqs[r], MIN((int)MAX_LENGTH - 1, part_refs.chunk_lens[r]));
+
+    int* h_ref_lens = (int*)malloc(num_references * sizeof(int));
+    for (int r = 0; r < num_references; ++r) h_ref_lens[r] = part_refs.chunk_lens[r];
+
+    // build orig->chunk list counts for host aggregation
+    int* orig_chunk_counts = NULL;
+    int** orig_chunk_lists = NULL;
+    build_orig_to_chunk_mapping(&part_refs, num_orig_refs, &orig_chunk_counts, &orig_chunk_lists);
+
+    // Device allocations
+    bv_t* d_Eq_queries = NULL;
+    char* d_queries = NULL;
+    char* d_refs = NULL;
+    int* d_q_lens = NULL;
+    int* d_ref_lens = NULL;
+    int* d_chunk_starts = NULL;
+    int* d_chunk_to_orig = NULL;
+    int* d_orig_ref_lens = NULL;
+
+    long long total_pair_chunks = (long long)num_queries * (long long)num_references;
+    int* d_pair_distances = NULL;
+    int* d_pair_zcounts = NULL;
+    int* d_pair_zindices = NULL;
+
+    // per-original aggregated arrays
+    int* d_lowest_score_orig = NULL;
+    int* d_lowest_count_orig = NULL;  // NEW: count of lowest indexes
+    int* d_lowest_indices_orig = NULL; // NEW: array of all lowest indexes
+    int* d_last_score_orig = NULL;
+
+    CUDA_CHECK(cudaMalloc((void**)&d_Eq_queries, (size_t)num_queries * 256 * sizeof(bv_t)));
+    CUDA_CHECK(cudaMalloc((void**)&d_queries, h_queries_bytes));
+    CUDA_CHECK(cudaMalloc((void**)&d_refs, h_refs_bytes));
+    CUDA_CHECK(cudaMalloc((void**)&d_q_lens, num_queries * sizeof(int)));
+    CUDA_CHECK(cudaMalloc((void**)&d_ref_lens, num_references * sizeof(int)));
+    CUDA_CHECK(cudaMalloc((void**)&d_chunk_starts, num_references * sizeof(int)));
+    CUDA_CHECK(cudaMalloc((void**)&d_chunk_to_orig, num_references * sizeof(int)));
+    CUDA_CHECK(cudaMalloc((void**)&d_orig_ref_lens, num_orig_refs * sizeof(int)));
+
+    CUDA_CHECK(cudaMalloc((void**)&d_pair_distances, (size_t)total_pair_chunks * sizeof(int)));
+    CUDA_CHECK(cudaMalloc((void**)&d_pair_zcounts, (size_t)total_pair_chunks * sizeof(int)));
+    CUDA_CHECK(cudaMalloc((void**)&d_pair_zindices, (size_t)total_pair_chunks * MAX_HITS * sizeof(int)));
+
+    CUDA_CHECK(cudaMalloc((void**)&d_lowest_score_orig, (size_t)num_queries * num_orig_refs * sizeof(int)));
+    CUDA_CHECK(cudaMalloc((void**)&d_lowest_count_orig, (size_t)num_queries * num_orig_refs * sizeof(int)));
+    CUDA_CHECK(cudaMalloc((void**)&d_lowest_indices_orig, (size_t)num_queries * num_orig_refs * MAX_HITS * sizeof(int)));
+    CUDA_CHECK(cudaMalloc((void**)&d_last_score_orig, (size_t)num_queries * num_orig_refs * sizeof(int)));
+
+    // host arrays to copy back aggregated orig results
+    int* h_lowest_score_orig = (int*)malloc((size_t)num_queries * num_orig_refs * sizeof(int));
+    int* h_lowest_count_orig = (int*)malloc((size_t)num_queries * num_orig_refs * sizeof(int));
+    int* h_lowest_indices_orig = (int*)malloc((size_t)num_queries * num_orig_refs * MAX_HITS * sizeof(int));
+    int* h_last_score_orig = (int*)malloc((size_t)num_queries * num_orig_refs * sizeof(int));
+
+    // prepare host arrays
+    CUDA_CHECK(cudaMemcpy(d_Eq_queries, h_Eq_queries, (size_t)num_queries * 256 * sizeof(bv_t), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_queries, h_queries, h_queries_bytes, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_refs, h_refs, h_refs_bytes, cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_q_lens, q_lens, num_queries * sizeof(int), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_ref_lens, h_ref_lens, num_references * sizeof(int), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_chunk_starts, part_refs.chunk_starts, num_references * sizeof(int), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_chunk_to_orig, part_refs.chunk_to_orig, num_references * sizeof(int), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_orig_ref_lens, orig_ref_lens, num_orig_refs * sizeof(int), cudaMemcpyHostToDevice));
+
+    // init per-original arrays on device
+    CUDA_CHECK(cudaMemset(d_lowest_score_orig, 0x7f, (size_t)num_queries * num_orig_refs * sizeof(int)));
+    CUDA_CHECK(cudaMemset(d_lowest_count_orig, 0, (size_t)num_queries * num_orig_refs * sizeof(int)));
+    CUDA_CHECK(cudaMemset(d_lowest_indices_orig, 0xff, (size_t)num_queries * num_orig_refs * MAX_HITS * sizeof(int)));
+    CUDA_CHECK(cudaMemset(d_last_score_orig, 0x7f, (size_t)num_queries * num_orig_refs * sizeof(int)));
+
+    // init pair-level arrays
+    CUDA_CHECK(cudaMemset(d_pair_distances, 0xff, (size_t)total_pair_chunks * sizeof(int)));
+    CUDA_CHECK(cudaMemset(d_pair_zcounts, 0, (size_t)total_pair_chunks * sizeof(int)));
+    CUDA_CHECK(cudaMemset(d_pair_zindices, 0xff, (size_t)total_pair_chunks * MAX_HITS * sizeof(int)));
+
+    // launch kernel
+    int threads = threadsPerBlock;
+    int blocks = num_queries;
+    if (blocks < 1) blocks = 1;
+    size_t shared_bytes = 256 * sizeof(bv_t);
+
+    printf("*** launching kernel: blocks=%d threads=%d shared=%zu num_chunks=%d num_orig=%d\n",
+           blocks, threads, shared_bytes, num_chunks, num_orig_refs);
+
+    double t0 = now_seconds();
+    for (int it = 0; it < loope; ++it) {
+        levenshtein_kernel_shared_agg<<<blocks, threads, shared_bytes>>>(
+            num_queries, num_chunks, num_orig_refs,
+            d_queries, d_q_lens, d_Eq_queries,
+            d_refs, d_ref_lens,
+            d_chunk_starts, d_chunk_to_orig,
+            d_orig_ref_lens,
+            d_pair_distances, d_pair_zcounts, d_pair_zindices,
+            d_lowest_score_orig, d_lowest_count_orig, d_lowest_indices_orig,  // ADDED COUNT AND INDICES
+            d_last_score_orig
+        );
+        CUDA_CHECK(cudaGetLastError());
+    }
+    CUDA_CHECK(cudaDeviceSynchronize());
+    double t1 = now_seconds();
+    double avg_time = (t1 - t0) / (double)loope;
+
+    // copy back pair-level arrays & aggregated per-original arrays
+    long long pairs = total_pair_chunks;
+    int* h_pair_distances = (int*)malloc((size_t)pairs * sizeof(int));
+    int* h_pair_zcounts = (int*)malloc((size_t)pairs * sizeof(int));
+    int* h_pair_zindices = (int*)malloc((size_t)pairs * MAX_HITS * sizeof(int));
+    if (!h_pair_distances || !h_pair_zcounts || !h_pair_zindices) {
+        fprintf(stderr, "OOM host pair buffers\n");
         return -1;
     }
 
-    // Build all pairs
-    int numPairs = num_queries * num_references;
+    CUDA_CHECK(cudaMemcpy(h_pair_distances, d_pair_distances, (size_t)pairs * sizeof(int), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(h_pair_zcounts, d_pair_zcounts, (size_t)pairs * sizeof(int), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(h_pair_zindices, d_pair_zindices, (size_t)pairs * MAX_HITS * sizeof(int), cudaMemcpyDeviceToHost));
 
-    // Flatten queries and references into contiguous buffers
-    size_t total_q_chars = 0, total_r_chars = 0;
-    for (int i = 0; i < num_queries; i++) total_q_chars += strlen(query_seqs[i]);
-    for (int j = 0; j < num_references; j++) total_r_chars += strlen(reference_seqs[j]);
+    CUDA_CHECK(cudaMemcpy(h_lowest_score_orig, d_lowest_score_orig, 
+    (size_t)num_queries * num_orig_refs * sizeof(int), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(h_lowest_count_orig, d_lowest_count_orig, 
+        (size_t)num_queries * num_orig_refs * sizeof(int), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(h_lowest_indices_orig, d_lowest_indices_orig, 
+        (size_t)num_queries * num_orig_refs * MAX_HITS * sizeof(int), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(h_last_score_orig, d_last_score_orig, 
+        (size_t)num_queries * num_orig_refs * sizeof(int), cudaMemcpyDeviceToHost));
 
-    char *h_q_flat = (char*)malloc(total_q_chars);
-    char *h_r_flat = (char*)malloc(total_r_chars);
-    int *h_q_off = (int*)malloc(sizeof(int) * numPairs);
-    int *h_r_off = (int*)malloc(sizeof(int) * numPairs);
-    int *h_q_len = (int*)malloc(sizeof(int) * numPairs);
-    int *h_r_len = (int*)malloc(sizeof(int) * numPairs);
+    // Correct last scores on host
+    for (int q = 0; q < num_queries; ++q) {
+        for (int orig = 0; orig < num_orig_refs; ++orig) {
+            long long orig_pair_idx = (long long)q * num_orig_refs + orig;
+            int orig_len = orig_ref_lens[orig];
+            int correct_last_score = 0x7f7f7f7f; // Start with sentinel
 
-    // Fill flattened buffers and offsets
-    size_t q_pos = 0, r_pos = 0;
-    int *query_offsets = (int*)malloc(sizeof(int) * num_queries);
-    int *reference_offsets = (int*)malloc(sizeof(int) * num_references);
-    for (int i = 0; i < num_queries; i++) {
-        query_offsets[i] = (int)q_pos;
-        size_t L = strlen(query_seqs[i]);
-        memcpy(h_q_flat + q_pos, query_seqs[i], L);
-        q_pos += L;
-    }
-    for (int j = 0; j < num_references; j++) {
-        reference_offsets[j] = (int)r_pos;
-        size_t L = strlen(reference_seqs[j]);
-        memcpy(h_r_flat + r_pos, reference_seqs[j], L);
-        r_pos += L;
-    }
+            // Find the chunk that actually ends at the original reference length
+            for (int ci_idx = 0; ci_idx < orig_chunk_counts[orig]; ++ci_idx) {
+                int chunk_id = orig_chunk_lists[orig][ci_idx];
+                int chunk_start = part_refs.chunk_starts[chunk_id];
+                int chunk_len = part_refs.chunk_lens[chunk_id];
 
-    // Now assign per-pair offsets/lengths
-    int pair = 0;
-    for (int i = 0; i < num_queries; i++) {
-        for (int j = 0; j < num_references; j++) {
-            h_q_off[pair] = query_offsets[i];
-            h_q_len[pair] = (int)strlen(query_seqs[i]);
-            h_r_off[pair] = reference_offsets[j];
-            h_r_len[pair] = (int)strlen(reference_seqs[j]);
-            pair++;
+                // This chunk contains the true end if: chunk_start + chunk_len == orig_len
+                if (chunk_start + chunk_len == orig_len) {
+                    long long pair_idx = (long long)q * num_chunks + chunk_id;
+                    correct_last_score = h_pair_distances[pair_idx];
+                    break;
+                }
+            }
+
+            // If we found a valid last score, override the GPU-computed one
+            if (correct_last_score != 0x7f7f7f7f) {
+                h_last_score_orig[orig_pair_idx] = correct_last_score;
+            }
         }
     }
 
-    // Device allocations for all pairs
-    char *d_q, *d_r;
-    cudaMalloc(&d_q, total_q_chars);
-    cudaMalloc(&d_r, total_r_chars);
-    cudaMemcpy(d_q, h_q_flat, total_q_chars, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_r, h_r_flat, total_r_chars, cudaMemcpyHostToDevice);
+    // Aggregate hits per original ref on host (dedupe & sort)
+    printf("\n=== Results ===\n");
+    for (int q = 0; q < num_queries; ++q) {
+        for (int orig = 0; orig < num_orig_refs; ++orig) {
+            // gather hits across all chunks that map to this original ref
+            size_t cap = 4096;
+            int *acc = (int*)malloc(sizeof(int) * cap);
+            size_t acc_n = 0;
+            int min_dist = INT_MAX;
 
-    // Allocate device-side arrays for all pairs
-    int *d_q_off, *d_r_off, *d_q_len, *d_r_len;
-    cudaMalloc(&d_q_off, sizeof(int) * numPairs);
-    cudaMalloc(&d_r_off, sizeof(int) * numPairs);
-    cudaMalloc(&d_q_len, sizeof(int) * numPairs);
-    cudaMalloc(&d_r_len, sizeof(int) * numPairs);
+            for (int ci_idx = 0; ci_idx < orig_chunk_counts[orig]; ++ci_idx) {
+                int chunk_id = orig_chunk_lists[orig][ci_idx];
+                long long pair_idx = (long long)q * num_chunks + chunk_id;
+                int zc = h_pair_zcounts[pair_idx];
+                int dist = h_pair_distances[pair_idx];
+                if (dist < min_dist) min_dist = dist;
+                for (int k = 0; k < zc && k < MAX_HITS; ++k) {
+                    int val = h_pair_zindices[pair_idx * MAX_HITS + k];
+                    if (val >= 0) {
+                        if (acc_n >= cap) { cap *= 2; acc = (int*)realloc(acc, sizeof(int) * cap); }
+                        acc[acc_n++] = val;
+                    }
+                }
+            }
 
-    cudaMemcpy(d_q_off, h_q_off, sizeof(int) * numPairs, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_r_off, h_r_off, sizeof(int) * numPairs, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_q_len, h_q_len, sizeof(int) * numPairs, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_r_len, h_r_len, sizeof(int) * numPairs, cudaMemcpyHostToDevice);
+            // dedupe & sort
+            if (acc_n > 0) {
+                qsort(acc, acc_n, sizeof(int), compare_ints);
+                size_t write = 1;
+                for (size_t i = 1; i < acc_n; ++i) if (acc[i] != acc[write-1]) acc[write++] = acc[i];
+                acc_n = write;
+            }
 
-    // Eq table allocation for all pairs
-    BitVec256 *d_Eq;
-    cudaMalloc(&d_Eq, sizeof(BitVec256) * 256 * numPairs);
-
-    // Results for all pairs
-    int *d_results, *d_lowest, *d_zero_counts, *d_zero_indices;
-    int *d_lowest_counts, *d_lowest_indices;
-    cudaMalloc(&d_results, sizeof(int) * numPairs);
-    cudaMalloc(&d_lowest, sizeof(int) * numPairs);
-    cudaMalloc(&d_zero_counts, sizeof(int) * numPairs);
-    cudaMalloc(&d_zero_indices, sizeof(int) * maxZeros * numPairs);
-    cudaMalloc(&d_lowest_counts, sizeof(int) * numPairs);
-    cudaMalloc(&d_lowest_indices, sizeof(int) * maxLowestIndices * numPairs);
-
-    // Host arrays for results
-    int *h_results = (int*)malloc(sizeof(int) * numPairs);
-    int *h_lowest  = (int*)malloc(sizeof(int) * numPairs);
-    int *h_zero_counts = (int*)malloc(sizeof(int) * numPairs);
-    int *h_zero_indices = (int*)malloc(sizeof(int) * maxZeros * numPairs);
-    int *h_lowest_counts = (int*)malloc(sizeof(int) * numPairs);
-    int *h_lowest_indices = (int*)malloc(sizeof(int) * maxLowestIndices * numPairs);
-
-    // Launch kernel for all pairs in single launch
-    int blocks = (numPairs + threadsPerBlock - 1) / threadsPerBlock;
-    bit_vector_levenshtein_256_kernel<<<blocks, threadsPerBlock>>>(
-        d_q, d_r, d_q_off, d_r_off, d_q_len, d_r_len,
-        d_Eq, d_results, d_lowest, d_zero_counts, d_zero_indices,
-        d_lowest_counts, d_lowest_indices, maxZeros, maxLowestIndices
-    );
-    cudaDeviceSynchronize();
-
-    // Copy back all results
-    cudaMemcpy(h_results, d_results, sizeof(int) * numPairs, cudaMemcpyDeviceToHost);
-    cudaMemcpy(h_lowest, d_lowest, sizeof(int) * numPairs, cudaMemcpyDeviceToHost);
-    cudaMemcpy(h_zero_counts, d_zero_counts, sizeof(int) * numPairs, cudaMemcpyDeviceToHost);
-    cudaMemcpy(h_zero_indices, d_zero_indices, sizeof(int) * maxZeros * numPairs, cudaMemcpyDeviceToHost);
-    cudaMemcpy(h_lowest_counts, d_lowest_counts, sizeof(int) * numPairs, cudaMemcpyDeviceToHost);
-    cudaMemcpy(h_lowest_indices, d_lowest_indices, sizeof(int) * maxLowestIndices * numPairs, cudaMemcpyDeviceToHost);
-
-    // Print results with zero-hit details and lowest score indices
-    for (int p = 0; p < numPairs; p++) {
-        int qi = p / num_references;
-        int rj = p % num_references;
-        int hits = h_zero_counts[p];
-        int qlen = h_q_len[p];
-        int rlen = h_r_len[p];
-        int lowest_hits = h_lowest_counts[p];
-	
-        printf("---------------------------------------------------------------\n");
-        printf("Pair: Q%d(%d) Vs R%d(%d)\n", qi + 1, qlen, rj + 1, rlen);
-        printf("Number of Hits: %d\n", hits);
-
-        if (hits > 0) {
+            // print block exactly as requested
+        printf("----------------------------------------------------------------------------\n");
+        printf("Pair: Q%d(%d) Vs R%d(%d)\n", q+1, q_lens[q], orig+1, orig_ref_lens[orig]);
+        printf("Number of Hits: %zu\n", acc_n);
+        if (acc_n > 0) {
             printf("Hit Indexes: [");
-            for (int z = 0; z < hits; z++) {
-                int idx = h_zero_indices[p * maxZeros + z];
-                printf("%d", idx);
-                if (z < hits - 1) printf(", ");
+            for (size_t i = 0; i < acc_n; ++i) {
+                if (i) printf(",");
+                printf("%d", acc[i]);
             }
             printf("]\n");
+        } else {
+            printf("Hit Indexes: N/A\n");
+        }
+
+        // Print ALL lowest score indexes
+        long long orig_pair_idx = (long long)q * num_orig_refs + orig;
+        int lowest_gpu = h_lowest_score_orig[orig_pair_idx];
+        int lowest_cnt = h_lowest_count_orig[orig_pair_idx];
+        
+        if (lowest_gpu == 0x7f7f7f7f) {
             printf("Lowest Score: N/A\n");
             printf("Lowest Score Indexes: N/A\n");
         } else {
-            printf("Hit Indexes: []\n");
-            printf("Lowest Score: %d\n", h_lowest[p]);
-            printf("Lowest Score Indexes: [");
-            for (int l = 0; l < lowest_hits; l++) {
-                int idx = h_lowest_indices[p * maxLowestIndices + l];
-                printf("%d", idx);
-                if (l < lowest_hits - 1) printf(", ");
+            printf("Lowest Score: %d\n", lowest_gpu);
+            
+            if (lowest_cnt > 0) {
+                // Collect and deduplicate lowest indexes
+                long long indices_base = orig_pair_idx * MAX_HITS;
+                int* lowest_arr = (int*)malloc(sizeof(int) * MIN(lowest_cnt, MAX_HITS));
+                int valid_count = 0;
+                
+                for (int k = 0; k < MIN(lowest_cnt, MAX_HITS); ++k) {
+                    int idx = h_lowest_indices_orig[indices_base + k];
+                    if (idx >= 0) {
+                        lowest_arr[valid_count++] = idx;
+                    }
+                }
+                
+                // Sort and deduplicate
+                if (valid_count > 0) {
+                    qsort(lowest_arr, valid_count, sizeof(int), compare_ints);
+                    int write = 1;
+                    for (int i = 1; i < valid_count; ++i) {
+                        if (lowest_arr[i] != lowest_arr[write-1]) {
+                            lowest_arr[write++] = lowest_arr[i];
+                        }
+                    }
+                    valid_count = write;
+                    
+                    printf("Lowest Score Indexes: [");
+                    for (int i = 0; i < valid_count; ++i) {
+                        if (i) printf(",");
+                        printf("%d", lowest_arr[i]);
+                    }
+                    printf("]\n");
+                }
+                
+                free(lowest_arr);
+            } else {
+                printf("Lowest Score Indexes: N/A\n");
             }
-            printf("]\n");
         }
 
-        printf("Last Score: %d\n", h_results[p]);
-        printf("\n");
-        printf("---------------------------------------------------------------\n");
+        int last_gpu = h_last_score_orig[orig_pair_idx];
+        if (last_gpu == 0x7f7f7f7f) {
+            printf("Last Score: N/A\n");
+        } else {
+            printf("Last Score: %d\n", last_gpu);
+        }
+
+        printf("----------------------------------------------------------------------------\n");
+        free(acc);
     }
+}
+
+    printf("\n%d loop Average time: %.6f sec.\n", loope, avg_time);
+
+    // cleanup
+    CUDA_CHECK(cudaFree(d_Eq_queries)); CUDA_CHECK(cudaFree(d_queries)); CUDA_CHECK(cudaFree(d_refs));
+    CUDA_CHECK(cudaFree(d_q_lens)); CUDA_CHECK(cudaFree(d_ref_lens));
+    CUDA_CHECK(cudaFree(d_chunk_starts)); CUDA_CHECK(cudaFree(d_chunk_to_orig)); CUDA_CHECK(cudaFree(d_orig_ref_lens));
+    CUDA_CHECK(cudaFree(d_pair_distances)); CUDA_CHECK(cudaFree(d_pair_zcounts)); CUDA_CHECK(cudaFree(d_pair_zindices));
+    CUDA_CHECK(cudaFree(d_lowest_score_orig));
+    CUDA_CHECK(cudaFree(d_lowest_count_orig));
+    CUDA_CHECK(cudaFree(d_lowest_indices_orig));
+    CUDA_CHECK(cudaFree(d_last_score_orig));
     
-    // free device
-    cudaFree(d_q); cudaFree(d_r);
-    cudaFree(d_q_off); cudaFree(d_r_off); cudaFree(d_q_len); cudaFree(d_r_len);
-    cudaFree(d_Eq);
-    cudaFree(d_results); cudaFree(d_lowest); cudaFree(d_zero_counts);
-    cudaFree(d_zero_indices);
-    cudaFree(d_lowest_counts); cudaFree(d_lowest_indices);
+    free(h_Eq_queries); free(h_queries); free(h_refs);
+    free(h_pair_distances); free(h_pair_zcounts); free(h_pair_zindices);
 
-    // free host
-    free(h_q_flat); free(h_r_flat);
-    free(h_q_off); free(h_r_off); free(h_q_len); free(h_r_len);
-    free(query_offsets); free(reference_offsets);
+    free(h_lowest_score_orig);
+    free(h_lowest_count_orig);
+    free(h_lowest_indices_orig);
+    free(h_last_score_orig);    free(h_ref_lens); free(q_lens);
 
-    for (int i = 0; i < num_queries; i++) free(query_seqs[i]);
-    for (int j = 0; j < num_references; j++) free(reference_seqs[j]);
-    free(query_seqs); free(reference_seqs);
+    free_orig_to_chunk_mapping(orig_chunk_counts, orig_chunk_lists, num_orig_refs);
+    free_partitioned_refs(&part_refs);
 
-    free(h_results); free(h_lowest); free(h_zero_counts); free(h_zero_indices);
-    free(h_lowest_counts); free(h_lowest_indices);
+    for (int i = 0; i < num_queries; ++i) free(query_seqs[i]);
+    free(query_seqs);
+    for (int i = 0; i < num_orig_refs; ++i) free(orig_refs[i]);
+    free(orig_refs);
+    free(orig_ref_lens);
 
     return 0;
 }
