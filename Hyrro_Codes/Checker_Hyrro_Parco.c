@@ -2,11 +2,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
-#include <windows.h>
+//#include <windows.h>
 #include <limits.h>
 
-#define query_file "D:/download/College Life/Thesis/CSE2_Hyy-dra_Thesis/Resources/Queries/que5_256.fasta"
-#define reference_file "D:/download/College Life/Thesis/CSE2_Hyy-dra_Thesis/Resources/References/ref5_50M.fasta"
+#define query_file "D:/download/College Life/Thesis/CSE2_Hyy-dra_Thesis/Resources/Queries/que4_256.fasta"
+#define reference_file "D:/download/College Life/Thesis/CSE2_Hyy-dra_Thesis/Resources/References/ref2_1M.fasta"
 
 #define loope 10
 

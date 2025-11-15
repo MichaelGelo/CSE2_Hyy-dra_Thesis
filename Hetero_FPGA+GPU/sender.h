@@ -10,8 +10,8 @@
 #define REMOTE_PATH     "/home/xilinx/jupyter_notebooks/updatedbit"
 #define FPGA_SCRIPT     "fpga_code.py"
 
-#define HOST_FPGA_REF   "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Final_GPU/fpga_splits/fpga_ref0.fasta"
-#define HOST_FPGA_QUERY "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Final_GPU/fpga_splits/fpga_query0.fasta"
+#define HOST_FPGA_REF   "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Hetero_FPGA+GPU/fpga_splits/fpga_ref0.fasta"
+#define HOST_FPGA_QUERY "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Hetero_FPGA+GPU/fpga_splits/fpga_query0.fasta"
 
 // Path to private SSH key
 #define SSH_KEY         "~/.ssh/id_rsa_fpga"
@@ -45,11 +45,18 @@ FPGAResult send_and_run_fpga() {
 
     char command[4096];
     char remote_ref[512], remote_que[512];
+    char temp_ref_path[1024], temp_query_path[1024];
     struct timeval start, end;
     double elapsed;
 
-    snprintf(remote_ref, sizeof(remote_ref), "%s/%s", REMOTE_PATH, basename(HOST_FPGA_REF));
-    snprintf(remote_que, sizeof(remote_que), "%s/%s", REMOTE_PATH, basename(HOST_FPGA_QUERY));
+    // Copy string literals to mutable buffers before calling basename
+    strncpy(temp_ref_path, HOST_FPGA_REF, sizeof(temp_ref_path) - 1);
+    temp_ref_path[sizeof(temp_ref_path) - 1] = '\0';
+    strncpy(temp_query_path, HOST_FPGA_QUERY, sizeof(temp_query_path) - 1);
+    temp_query_path[sizeof(temp_query_path) - 1] = '\0';
+
+    snprintf(remote_ref, sizeof(remote_ref), "%s/%s", REMOTE_PATH, basename(temp_ref_path));
+    snprintf(remote_que, sizeof(remote_que), "%s/%s", REMOTE_PATH, basename(temp_query_path));
 
     // Send reference file via rsync
     gettimeofday(&start, NULL);

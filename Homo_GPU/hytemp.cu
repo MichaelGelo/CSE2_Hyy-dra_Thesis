@@ -97,6 +97,16 @@ static __forceinline__ __host__ __device__ void bv_shl1_unrolled(bv_t* out, cons
     out->w[2] = (in->w[2] << 1) | c1;
     out->w[3] = (in->w[3] << 1) | c2;
 }
+static __forceinline__ __host__ __device__ void bv_shr1_unrolled(bv_t* out, const bv_t* in) {
+    uint64_t c3 = in->w[3] & 1ULL;
+    uint64_t c2 = in->w[2] & 1ULL;
+    uint64_t c1 = in->w[1] & 1ULL;
+    out->w[3] = (in->w[3] >> 1);
+    out->w[2] = (in->w[2] >> 1) | (c3 << 63);
+    out->w[1] = (in->w[1] >> 1) | (c2 << 63);
+    out->w[0] = (in->w[0] >> 1) | (c1 << 63);
+}
+
 static __forceinline__ __host__ __device__ int bv_test_top_unrolled(const bv_t* v, int query_length) {
     int idx = (query_length - 1) / 64;
     int bit = (query_length - 1) % 64;
@@ -127,7 +137,18 @@ static __forceinline__ __host__ __device__ uint64_t bv_add_unrolled(bv_t* out, c
     return carry;
 }
 
-// ---------- Bit-vector Levenshtein (returns local lowest index too) ----------
+// mask bits above m-1 to zero (so bits >= m are cleared)
+static __forceinline__ __host__ __device__ void bv_mask_top(bv_t *v, int m) {
+    if (m >= 64 * BV_WORDS) return; // no masking needed
+    int last_word = (m - 1) / 64;
+    int last_bit = (m - 1) % 64;
+    uint64_t last_mask = (last_bit == 63) ? ~0ULL : ((1ULL << (last_bit + 1)) - 1ULL);
+
+    for (int i = last_word + 1; i < BV_WORDS; ++i) v->w[i] = 0ULL;
+    v->w[last_word] &= last_mask;
+}
+
+// ---------- Bit-vector Levenshtein (from hycuda.cu) ----------
 static __forceinline__ __host__ __device__ int bit_vector_levenshtein_local(
     int query_length,
     const char* reference,
@@ -135,76 +156,95 @@ static __forceinline__ __host__ __device__ int bit_vector_levenshtein_local(
     const bv_t* Eq,
     int* zero_indices,
     int* zero_count,
-    int* lowest,
-    int* lowest_index_local)
+    int* lowest_score,
+    int* lowest_indices,
+    int* lowest_count)
 {
     if (query_length > 64 * BV_WORDS || query_length <= 0) return -1;
 
-    bv_t Pv, Mv, Ph, Mh, Xv, Xh, Xp;
+    bv_t Pv, Mv, Xv, Xh, Ph, Mh;
+    bv_t PrevEqMask, trans_mask, tmp, addtmp, t1, t2;
+
     bv_set_all_unrolled(&Pv, ~0ULL);
     bv_clear_unrolled(&Mv);
-    bv_clear_unrolled(&Ph);
-    bv_clear_unrolled(&Mh);
-    bv_clear_unrolled(&Xv);
-    bv_clear_unrolled(&Xh);
-    bv_clear_unrolled(&Xp);
+    bv_clear_unrolled(&PrevEqMask);
+    bv_clear_unrolled(&trans_mask);
+
+    bv_mask_top(&Pv, query_length);
 
     *zero_count = 0;
+    *lowest_count = 0;
     int score = query_length;
-    *lowest = score;
-    *lowest_index_local = -1;
+    *lowest_score = score;
 
-    bv_t tmp1, tmp2, tmp3, tmp4;
+    unsigned char prev_rc = 0;
+    bool have_prev = false;
 
     for (int j = 0; j < reference_length; ++j) {
         unsigned char c = (unsigned char)reference[j];
         const bv_t* Eqc = &Eq[c];
 
+        // Standard Myers/Hyyrö
         bv_or_unrolled(&Xv, Eqc, &Mv);
 
-        bv_not_unrolled(&tmp1, &Xh);
-        bv_and_unrolled(&tmp2, &tmp1, &Xv);
-        bv_shl1_unrolled(&tmp3, &tmp2);
-        bv_and_unrolled(&tmp4, &tmp3, &Xp);
-        bv_copy_unrolled(&Xh, &tmp4);
+        bv_and_unrolled(&tmp, &Xv, &Pv);
+        bv_add_unrolled(&addtmp, &tmp, &Pv);
+        bv_xor_unrolled(&Xh, &addtmp, &Pv);
+        bv_or_unrolled(&Xh, &Xh, &Xv);
+        bv_or_unrolled(&Xh, &Xh, &Mv);
 
-        bv_and_unrolled(&tmp1, &Xv, &Pv);
-        bv_add_unrolled(&tmp2, &tmp1, &Pv);
-        bv_xor_unrolled(&tmp2, &tmp2, &Pv);
-        bv_or_unrolled(&tmp3, &tmp2, &Xv);
+        bv_or_unrolled(&tmp, &Xh, &Pv);
+        bv_not_unrolled(&t1, &tmp);
+        bv_or_unrolled(&Ph, &Mv, &t1);
 
-        bv_or_unrolled(&tmp2, &tmp3, &Mv);
-        bv_or_unrolled(&tmp1, &Xh, &tmp2);
-        bv_copy_unrolled(&Xh, &tmp1);
-
-        bv_or_unrolled(&tmp1, &Xh, &Pv);
-        bv_not_unrolled(&tmp2, &tmp1);
-        bv_or_unrolled(&Ph, &Mv, &tmp2);
-
-        bv_and_unrolled(&Mh, &Xh, &Pv);
+        bv_and_unrolled(&Mh, &Pv, &Xh);
 
         if (bv_test_top_unrolled(&Ph, query_length)) ++score;
         if (bv_test_top_unrolled(&Mh, query_length)) --score;
 
-        if (score < *lowest) {
-            *lowest = score;
-            *lowest_index_local = j;
+        if (score < *lowest_score) {
+            *lowest_score = score;
+            *lowest_count = 0;
+            // Fall-through to add the first index
+        }
+        if (score == *lowest_score) {
+            if (*lowest_count < MAX_HITS) {
+                lowest_indices[*lowest_count] = j;
+                (*lowest_count)++;
+            }
         }
 
-        bv_copy_unrolled(&Xp, &Xv);
+        if (have_prev) {
+            bv_shr1_unrolled(&t1, &PrevEqMask);
+            bv_and_unrolled(&trans_mask, Eqc, &t1);
+        } else {
+            bv_clear_unrolled(&trans_mask);
+        }
 
-        bv_shl1_unrolled(&Xv, &Ph);
+        bv_not_unrolled(&t2, &trans_mask);
+        bv_and_unrolled(&Pv, &Pv, &t2);
+        bv_or_unrolled(&Mv, &Mv, &trans_mask);
 
-        bv_shl1_unrolled(&tmp1, &Mh);
-        bv_or_unrolled(&tmp2, &Xh, &Xv);
-        bv_not_unrolled(&tmp3, &tmp2);
-        bv_or_unrolled(&Pv, &tmp1, &tmp3);
+        bv_shl1_unrolled(&t1, &Mh);
+        bv_shl1_unrolled(&t2, &Ph);
+        bv_or_unrolled(&tmp, &Xh, &t2);
+        bv_not_unrolled(&addtmp, &tmp);
+        bv_or_unrolled(&Pv, &t1, &addtmp);
 
-        bv_and_unrolled(&Mv, &Xh, &Xv);
+        bv_and_unrolled(&Mv, &Xh, &t2);
+
+        bv_mask_top(&Pv, query_length);
+        bv_mask_top(&Mv, query_length);
+
+        bv_copy_unrolled(&PrevEqMask, Eqc);
+        have_prev = true;
+        prev_rc = c;
 
         if (score == 0) {
-            if (*zero_count < MAX_HITS) zero_indices[*zero_count] = j;
-            (*zero_count)++;
+            if (*zero_count < MAX_HITS) {
+                zero_indices[*zero_count] = j;
+                (*zero_count)++;
+            }
         }
     }
 
@@ -216,21 +256,19 @@ static __forceinline__ __host__ __device__ int bit_vector_levenshtein_local(
 __global__ void levenshtein_kernel_shared_agg(
     int num_queries, int num_chunks, int num_orig_refs,
     const char* __restrict__ d_queries, const int* __restrict__ d_q_lens, const bv_t* __restrict__ d_Eq_queries,
-    const char* __restrict__ d_refs, const int* __restrict__ d_ref_lens, // per-chunk
+    const char* __restrict__ d_refs, const int* __restrict__ d_ref_lens,
     const int* __restrict__ d_chunk_starts, const int* __restrict__ d_chunk_to_orig,
-    const int* __restrict__ d_orig_ref_lens, // per original ref
-    // pair-level outputs (per query x chunk)
+    const int* __restrict__ d_orig_ref_lens,
     int* __restrict__ d_pair_distances, int* __restrict__ d_pair_zcounts, int* __restrict__ d_pair_zindices,
-    // per-original aggregated (per query x original ref)
-    int* __restrict__ d_lowest_score_orig, int* __restrict__ d_lowest_index_orig, int* __restrict__ d_last_score_orig
+    int* __restrict__ d_lowest_score_orig, int* __restrict__ d_lowest_count_orig, int* __restrict__ d_lowest_indices_orig,
+    int* __restrict__ d_last_score_orig
 )
 {
-    extern __shared__ bv_t s_Eq[]; // 256 entries
+    extern __shared__ bv_t s_Eq[];
     int q = blockIdx.x;
     if (q >= num_queries) return;
     int tid = threadIdx.x;
 
-    // load Eq for this query into shared
     for (int i = tid; i < 256; i += blockDim.x) {
         s_Eq[i] = d_Eq_queries[(long long)q * 256LL + i];
     }
@@ -241,54 +279,55 @@ __global__ void levenshtein_kernel_shared_agg(
         const char* refptr = &d_refs[(size_t)c * MAX_LENGTH];
         int rlen = d_ref_lens[c];
         int chunk_start = d_chunk_starts[c];
-        int orig = d_chunk_to_orig[c]; // original reference id
+        int orig = d_chunk_to_orig[c];
         long long pair_idx = (long long)q * num_chunks + c;
 
-        // local arrays (stack)
         int local_zero_indices[MAX_HITS];
         int local_zero_count = 0;
-        int local_lowest_val = INT_MAX;
-        int local_lowest_idx = -1;
+        int local_lowest_score = INT_MAX;
+        int local_lowest_indices[MAX_HITS];
+        int local_lowest_count = 0;
 
         int dist = bit_vector_levenshtein_local(qlen, refptr, rlen, s_Eq,
-            local_zero_indices, &local_zero_count, &local_lowest_val, &local_lowest_idx);
+            local_zero_indices, &local_zero_count, 
+            &local_lowest_score, local_lowest_indices, &local_lowest_count);
 
-        // write pair-level results (pair-level arrays sized num_queries * num_chunks)
+        // Write pair-level results
         d_pair_distances[pair_idx] = dist;
         d_pair_zcounts[pair_idx] = local_zero_count;
-        // convert local zero positions to global coordinates and write into pair zindices
         long long base_zptr = pair_idx * MAX_HITS;
         for (int k = 0; k < local_zero_count && k < MAX_HITS; ++k) {
             int global_pos = chunk_start + local_zero_indices[k];
             d_pair_zindices[base_zptr + k] = global_pos;
         }
-        // fill remaining with -1 for safety (optional)
-        for (int k = local_zero_count; k < MAX_HITS; ++k) d_pair_zindices[base_zptr + k] = -1;
+        for (int k = local_zero_count; k < MAX_HITS; ++k) {
+            d_pair_zindices[base_zptr + k] = -1;
+        }
 
-        // -------- GPU-side aggregation for original reference (per query x orig) --------
+        // -------- GPU-side aggregation with ALL lowest indexes --------
         long long orig_pair_idx = (long long)q * num_orig_refs + orig;
+        long long orig_indices_base = orig_pair_idx * MAX_HITS;
 
-        // 1) update lowest score and lowest index atomically (atomic CAS loop)
-        // Only attempt if local_lowest_val is valid
-        if (local_lowest_idx >= 0) {
-            int global_lowest_pos = chunk_start + local_lowest_idx;
-            // atomicCAS loop for lowest score update
-            int old;
-            do {
-                old = d_lowest_score_orig[orig_pair_idx];
-                if (local_lowest_val < old) { // attempt to replace
-                    int res = atomicCAS(&d_lowest_score_orig[orig_pair_idx], old, local_lowest_val);
-                    if (res == old) {
-                        // we succeeded in replacing lowest score, now set index
-                        atomicExch(&d_lowest_index_orig[orig_pair_idx], global_lowest_pos);
-                        break;
-                    } else {
-                        // someone else changed it; loop to re-check
+        if (local_lowest_count > 0) {
+            // Try to update the lowest score atomically
+            int old_score = atomicMin(&d_lowest_score_orig[orig_pair_idx], local_lowest_score);
+            
+            // Now add all our lowest indexes if they match the current best
+            int current_best = d_lowest_score_orig[orig_pair_idx];
+            
+            if (local_lowest_score == current_best) {
+                // Add all our local_lowest_indices to the global array
+                for (int k = 0; k < local_lowest_count; ++k) {
+                    int global_lowest_pos = chunk_start + local_lowest_indices[k];
+                    
+                    // Atomically get a slot in the indices array
+                    int slot = atomicAdd(&d_lowest_count_orig[orig_pair_idx], 1);
+                    
+                    if (slot < MAX_HITS) {
+                        d_lowest_indices_orig[orig_indices_base + slot] = global_lowest_pos;
                     }
-                } else {
-                    break; // no update needed
                 }
-            } while (true);
+            }
         }
     }
 }
@@ -389,7 +428,8 @@ int main() {
 
     // per-original aggregated arrays
     int* d_lowest_score_orig = NULL;
-    int* d_lowest_index_orig = NULL;
+    int* d_lowest_count_orig = NULL;  // NEW: count of lowest indexes
+    int* d_lowest_indices_orig = NULL; // NEW: array of all lowest indexes
     int* d_last_score_orig = NULL;
 
     CUDA_CHECK(cudaMalloc((void**)&d_Eq_queries, (size_t)num_queries * 256 * sizeof(bv_t)));
@@ -406,12 +446,14 @@ int main() {
     CUDA_CHECK(cudaMalloc((void**)&d_pair_zindices, (size_t)total_pair_chunks * MAX_HITS * sizeof(int)));
 
     CUDA_CHECK(cudaMalloc((void**)&d_lowest_score_orig, (size_t)num_queries * num_orig_refs * sizeof(int)));
-    CUDA_CHECK(cudaMalloc((void**)&d_lowest_index_orig, (size_t)num_queries * num_orig_refs * sizeof(int)));
+    CUDA_CHECK(cudaMalloc((void**)&d_lowest_count_orig, (size_t)num_queries * num_orig_refs * sizeof(int)));
+    CUDA_CHECK(cudaMalloc((void**)&d_lowest_indices_orig, (size_t)num_queries * num_orig_refs * MAX_HITS * sizeof(int)));
     CUDA_CHECK(cudaMalloc((void**)&d_last_score_orig, (size_t)num_queries * num_orig_refs * sizeof(int)));
 
     // host arrays to copy back aggregated orig results
     int* h_lowest_score_orig = (int*)malloc((size_t)num_queries * num_orig_refs * sizeof(int));
-    int* h_lowest_index_orig = (int*)malloc((size_t)num_queries * num_orig_refs * sizeof(int));
+    int* h_lowest_count_orig = (int*)malloc((size_t)num_queries * num_orig_refs * sizeof(int));
+    int* h_lowest_indices_orig = (int*)malloc((size_t)num_queries * num_orig_refs * MAX_HITS * sizeof(int));
     int* h_last_score_orig = (int*)malloc((size_t)num_queries * num_orig_refs * sizeof(int));
 
     // prepare host arrays
@@ -426,7 +468,8 @@ int main() {
 
     // init per-original arrays on device
     CUDA_CHECK(cudaMemset(d_lowest_score_orig, 0x7f, (size_t)num_queries * num_orig_refs * sizeof(int)));
-    CUDA_CHECK(cudaMemset(d_lowest_index_orig, 0xff, (size_t)num_queries * num_orig_refs * sizeof(int)));
+    CUDA_CHECK(cudaMemset(d_lowest_count_orig, 0, (size_t)num_queries * num_orig_refs * sizeof(int)));
+    CUDA_CHECK(cudaMemset(d_lowest_indices_orig, 0xff, (size_t)num_queries * num_orig_refs * MAX_HITS * sizeof(int)));
     CUDA_CHECK(cudaMemset(d_last_score_orig, 0x7f, (size_t)num_queries * num_orig_refs * sizeof(int)));
 
     // init pair-level arrays
@@ -452,7 +495,8 @@ int main() {
             d_chunk_starts, d_chunk_to_orig,
             d_orig_ref_lens,
             d_pair_distances, d_pair_zcounts, d_pair_zindices,
-            d_lowest_score_orig, d_lowest_index_orig, d_last_score_orig
+            d_lowest_score_orig, d_lowest_count_orig, d_lowest_indices_orig,  // ADDED COUNT AND INDICES
+            d_last_score_orig
         );
         CUDA_CHECK(cudaGetLastError());
     }
@@ -474,9 +518,14 @@ int main() {
     CUDA_CHECK(cudaMemcpy(h_pair_zcounts, d_pair_zcounts, (size_t)pairs * sizeof(int), cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(h_pair_zindices, d_pair_zindices, (size_t)pairs * MAX_HITS * sizeof(int), cudaMemcpyDeviceToHost));
 
-    CUDA_CHECK(cudaMemcpy(h_lowest_score_orig, d_lowest_score_orig, (size_t)num_queries * num_orig_refs * sizeof(int), cudaMemcpyDeviceToHost));
-    CUDA_CHECK(cudaMemcpy(h_lowest_index_orig, d_lowest_index_orig, (size_t)num_queries * num_orig_refs * sizeof(int), cudaMemcpyDeviceToHost));
-    CUDA_CHECK(cudaMemcpy(h_last_score_orig, d_last_score_orig, (size_t)num_queries * num_orig_refs * sizeof(int), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(h_lowest_score_orig, d_lowest_score_orig, 
+    (size_t)num_queries * num_orig_refs * sizeof(int), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(h_lowest_count_orig, d_lowest_count_orig, 
+        (size_t)num_queries * num_orig_refs * sizeof(int), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(h_lowest_indices_orig, d_lowest_indices_orig, 
+        (size_t)num_queries * num_orig_refs * MAX_HITS * sizeof(int), cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(h_last_score_orig, d_last_score_orig, 
+        (size_t)num_queries * num_orig_refs * sizeof(int), cudaMemcpyDeviceToHost));
 
     // Correct last scores on host
     for (int q = 0; q < num_queries; ++q) {
@@ -540,46 +589,80 @@ int main() {
             }
 
             // print block exactly as requested
-            printf("----------------------------------------------------------------------------\n");
-            printf("Pair: Q%d(%d) Vs R%d(%d)\n", q+1, q_lens[q], orig+1, orig_ref_lens[orig]);
-            printf("Number of Hits: %zu\n", acc_n);
-            if (acc_n > 0) {
-                printf("Hit Indexes: [");
-                for (size_t i = 0; i < acc_n; ++i) {
-                    if (i) printf(",");
-                    printf("%d", acc[i]);
-                }
-                printf("]\n");
-            } else {
-                printf("Hit Indexes: N/A\n");
+        printf("----------------------------------------------------------------------------\n");
+        printf("Pair: Q%d(%d) Vs R%d(%d)\n", q+1, q_lens[q], orig+1, orig_ref_lens[orig]);
+        printf("Number of Hits: %zu\n", acc_n);
+        if (acc_n > 0) {
+            printf("Hit Indexes: [");
+            for (size_t i = 0; i < acc_n; ++i) {
+                if (i) printf(",");
+                printf("%d", acc[i]);
             }
-
-            // lowest score and index come from GPU aggregated arrays
-            int lowest_gpu = h_lowest_score_orig[(long long)q * num_orig_refs + orig];
-            int lowest_idx_gpu = h_lowest_index_orig[(long long)q * num_orig_refs + orig];
-            // sentinel check: INT_MAX sentinel used (0x7f7f7f7f)
-            if (lowest_gpu == 0x7f7f7f7f) {
-                printf("Lowest Score: N/A\n");
-                printf("Lowest Score Indexes: N/A\n");
-            } else {
-                printf("Lowest Score: %d\n", lowest_gpu);
-                if (lowest_idx_gpu >= 0) printf("Lowest Score Indexes: [%d]\n", lowest_idx_gpu);
-                else printf("Lowest Score Indexes: N/A\n");
-            }
-
-            // last score: now corrected on host
-            int last_gpu = h_last_score_orig[(long long)q * num_orig_refs + orig];
-            if (last_gpu == 0x7f7f7f7f) {
-                printf("Last Score: N/A\n");
-            } else {
-                printf("Last Score: %d\n", last_gpu);
-            }
-
-            printf("----------------------------------------------------------------------------\n");
-
-            free(acc);
+            printf("]\n");
+        } else {
+            printf("Hit Indexes: N/A\n");
         }
+
+        // Print ALL lowest score indexes
+        long long orig_pair_idx = (long long)q * num_orig_refs + orig;
+        int lowest_gpu = h_lowest_score_orig[orig_pair_idx];
+        int lowest_cnt = h_lowest_count_orig[orig_pair_idx];
+        
+        if (lowest_gpu == 0x7f7f7f7f) {
+            printf("Lowest Score: N/A\n");
+            printf("Lowest Score Indexes: N/A\n");
+        } else {
+            printf("Lowest Score: %d\n", lowest_gpu);
+            
+            if (lowest_cnt > 0) {
+                // Collect and deduplicate lowest indexes
+                long long indices_base = orig_pair_idx * MAX_HITS;
+                int* lowest_arr = (int*)malloc(sizeof(int) * MIN(lowest_cnt, MAX_HITS));
+                int valid_count = 0;
+                
+                for (int k = 0; k < MIN(lowest_cnt, MAX_HITS); ++k) {
+                    int idx = h_lowest_indices_orig[indices_base + k];
+                    if (idx >= 0) {
+                        lowest_arr[valid_count++] = idx;
+                    }
+                }
+                
+                // Sort and deduplicate
+                if (valid_count > 0) {
+                    qsort(lowest_arr, valid_count, sizeof(int), compare_ints);
+                    int write = 1;
+                    for (int i = 1; i < valid_count; ++i) {
+                        if (lowest_arr[i] != lowest_arr[write-1]) {
+                            lowest_arr[write++] = lowest_arr[i];
+                        }
+                    }
+                    valid_count = write;
+                    
+                    printf("Lowest Score Indexes: [");
+                    for (int i = 0; i < valid_count; ++i) {
+                        if (i) printf(",");
+                        printf("%d", lowest_arr[i]);
+                    }
+                    printf("]\n");
+                }
+                
+                free(lowest_arr);
+            } else {
+                printf("Lowest Score Indexes: N/A\n");
+            }
+        }
+
+        int last_gpu = h_last_score_orig[orig_pair_idx];
+        if (last_gpu == 0x7f7f7f7f) {
+            printf("Last Score: N/A\n");
+        } else {
+            printf("Last Score: %d\n", last_gpu);
+        }
+
+        printf("----------------------------------------------------------------------------\n");
+        free(acc);
     }
+}
 
     printf("\n%d loop Average time: %.6f sec.\n", loope, avg_time);
 
@@ -588,12 +671,18 @@ int main() {
     CUDA_CHECK(cudaFree(d_q_lens)); CUDA_CHECK(cudaFree(d_ref_lens));
     CUDA_CHECK(cudaFree(d_chunk_starts)); CUDA_CHECK(cudaFree(d_chunk_to_orig)); CUDA_CHECK(cudaFree(d_orig_ref_lens));
     CUDA_CHECK(cudaFree(d_pair_distances)); CUDA_CHECK(cudaFree(d_pair_zcounts)); CUDA_CHECK(cudaFree(d_pair_zindices));
-    CUDA_CHECK(cudaFree(d_lowest_score_orig)); CUDA_CHECK(cudaFree(d_lowest_index_orig)); CUDA_CHECK(cudaFree(d_last_score_orig));
-
+    CUDA_CHECK(cudaFree(d_lowest_score_orig));
+    CUDA_CHECK(cudaFree(d_lowest_count_orig));
+    CUDA_CHECK(cudaFree(d_lowest_indices_orig));
+    CUDA_CHECK(cudaFree(d_last_score_orig));
+    
     free(h_Eq_queries); free(h_queries); free(h_refs);
     free(h_pair_distances); free(h_pair_zcounts); free(h_pair_zindices);
-    free(h_lowest_score_orig); free(h_lowest_index_orig); free(h_last_score_orig);
-    free(h_ref_lens); free(q_lens);
+
+    free(h_lowest_score_orig);
+    free(h_lowest_count_orig);
+    free(h_lowest_indices_orig);
+    free(h_last_score_orig);    free(h_ref_lens); free(q_lens);
 
     free_orig_to_chunk_mapping(orig_chunk_counts, orig_chunk_lists, num_orig_refs);
     free_partitioned_refs(&part_refs);
