@@ -10,8 +10,9 @@
 #define REMOTE_PATH     "/home/xilinx/jupyter_notebooks/updatedbit"
 #define FPGA_SCRIPT     "fpga_code.py"
 
-#define HOST_FPGA_REF   "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Hetero_FPGA+GPU/fpga_splits/fpga_ref0.fasta"
-#define HOST_FPGA_QUERY "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Hetero_FPGA+GPU/fpga_splits/fpga_query0.fasta"
+// Base paths - files will be fpga_ref0.fasta, fpga_ref1.fasta, etc.
+#define HOST_FPGA_REF_DIR   "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Hetero_FPGA+GPU/fpga_splits"
+#define HOST_FPGA_QUERY_DIR "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Hetero_FPGA+GPU/fpga_splits"
 
 // Path to private SSH key
 #define SSH_KEY         "~/.ssh/id_rsa_fpga"
@@ -36,7 +37,8 @@ void free_fpga_result(FPGAResult *res) {
     res->num_lowest_indexes = 0;
 }
 
-FPGAResult send_and_run_fpga() {
+// Single FPGA execution (for one query-ref pair)
+FPGAResult run_single_fpga(const char* ref_file, const char* query_file) {
     FPGAResult result = {0};
     result.final_score = -1;
     result.lowest_score = -1;
@@ -50,35 +52,38 @@ FPGAResult send_and_run_fpga() {
     double elapsed;
 
     // Copy string literals to mutable buffers before calling basename
-    strncpy(temp_ref_path, HOST_FPGA_REF, sizeof(temp_ref_path) - 1);
+    strncpy(temp_ref_path, ref_file, sizeof(temp_ref_path) - 1);
     temp_ref_path[sizeof(temp_ref_path) - 1] = '\0';
-    strncpy(temp_query_path, HOST_FPGA_QUERY, sizeof(temp_query_path) - 1);
+    strncpy(temp_query_path, query_file, sizeof(temp_query_path) - 1);
     temp_query_path[sizeof(temp_query_path) - 1] = '\0';
 
     snprintf(remote_ref, sizeof(remote_ref), "%s/%s", REMOTE_PATH, basename(temp_ref_path));
     snprintf(remote_que, sizeof(remote_que), "%s/%s", REMOTE_PATH, basename(temp_query_path));
 
     // Send reference file via rsync
+    printf("Sending reference: %s\n", ref_file);
     gettimeofday(&start, NULL);
     snprintf(command, sizeof(command),
              "rsync -avz -e 'ssh -i %s -o StrictHostKeyChecking=no' %s %s@%s:%s/",
-             SSH_KEY, HOST_FPGA_REF, USERNAME, FPGA_IP, REMOTE_PATH);
+             SSH_KEY, ref_file, USERNAME, FPGA_IP, REMOTE_PATH);
     if (system(command) != 0) fprintf(stderr, "Failed to send reference\n");
     gettimeofday(&end, NULL);
     elapsed = get_elapsed_time(start, end);
-    printf("Reference file sent in %.3f seconds.\n\n", elapsed);
+    printf("Reference file sent in %.3f seconds.\n", elapsed);
 
     // Send query file via rsync
+    printf("Sending query: %s\n", query_file);
     gettimeofday(&start, NULL);
     snprintf(command, sizeof(command),
              "rsync -avz -e 'ssh -i %s -o StrictHostKeyChecking=no' %s %s@%s:%s/",
-             SSH_KEY, HOST_FPGA_QUERY, USERNAME, FPGA_IP, REMOTE_PATH);
+             SSH_KEY, query_file, USERNAME, FPGA_IP, REMOTE_PATH);
     if (system(command) != 0) fprintf(stderr, "Failed to send query\n");
     gettimeofday(&end, NULL);
     elapsed = get_elapsed_time(start, end);
-    printf("Query file sent in %.3f seconds.\n\n", elapsed);
+    printf("Query file sent in %.3f seconds.\n", elapsed);
 
     // Run FPGA script remotely
+    printf("Running FPGA computation...\n");
     gettimeofday(&start, NULL);
     snprintf(command, sizeof(command),
              "ssh -i %s -o StrictHostKeyChecking=no %s@%s "
@@ -176,4 +181,78 @@ FPGAResult send_and_run_fpga() {
 
     pclose(fp);
     return result;
+}
+
+// Run FPGA for multiple queries and references
+// Returns 2D array of results: results[query_idx][ref_idx]
+FPGAResult** send_and_run_fpga_multi(int num_queries, int num_refs) {
+    printf("=== Running FPGA for %d queries x %d references ===\n\n", num_queries, num_refs);
+    
+    // Allocate 2D array for results
+    FPGAResult** results = (FPGAResult**)malloc(num_queries * sizeof(FPGAResult*));
+    for (int q = 0; q < num_queries; q++) {
+        results[q] = (FPGAResult*)malloc(num_refs * sizeof(FPGAResult));
+    }
+    
+    // Loop through all query-reference pairs
+    for (int q = 0; q < num_queries; q++) {
+        for (int r = 0; r < num_refs; r++) {
+            printf("\n========================================\n");
+            printf("Processing: Query %d vs Reference %d\n", q, r);
+            printf("========================================\n");
+            
+            // Build file paths dynamically
+            char ref_file[1024];
+            char query_file[1024];
+            snprintf(ref_file, sizeof(ref_file), "%s/fpga_ref%d.fasta", 
+                     HOST_FPGA_REF_DIR, r);
+            snprintf(query_file, sizeof(query_file), "%s/fpga_query%d.fasta", 
+                     HOST_FPGA_QUERY_DIR, q);
+            
+            // Run single FPGA computation
+            results[q][r] = run_single_fpga(ref_file, query_file);
+            
+            // Print immediate results
+            printf("\n--- Results for Q%d vs R%d in FPGA ---\n", q, r);
+            printf("Hardware execution time: %.2f ms\n", results[q][r].hw_exec_time_ms);
+            printf("Final score: %d\n", results[q][r].final_score);
+            printf("Lowest score: %d\n", results[q][r].lowest_score);
+            printf("Lowest indexes count: %d\n", results[q][r].num_lowest_indexes);
+            if (results[q][r].num_lowest_indexes > 0) {
+                printf("Lowest indexes: [");
+                for (int i = 0; i < results[q][r].num_lowest_indexes; i++) {
+                    printf("%lu", results[q][r].lowest_indexes[i]);
+                    if (i < results[q][r].num_lowest_indexes - 1) printf(", ");
+                }
+                printf("]\n");
+            }
+            printf("Total execution time: %.2f ms\n", results[q][r].total_exec_ms);
+            printf("----------------------------\n\n");
+        }
+    }
+    
+    return results;
+}
+
+// Free the 2D results array
+void free_fpga_results_multi(FPGAResult** results, int num_queries, int num_refs) {
+    if (!results) return;
+    
+    for (int q = 0; q < num_queries; q++) {
+        for (int r = 0; r < num_refs; r++) {
+            free_fpga_result(&results[q][r]);
+        }
+        free(results[q]);
+    }
+    free(results);
+}
+
+// Legacy single-pair function (for backward compatibility)
+FPGAResult send_and_run_fpga() {
+    char ref_file[1024];
+    char query_file[1024];
+    snprintf(ref_file, sizeof(ref_file), "%s/fpga_ref0.fasta", HOST_FPGA_REF_DIR);
+    snprintf(query_file, sizeof(query_file), "%s/fpga_query0.fasta", HOST_FPGA_QUERY_DIR);
+    
+    return run_single_fpga(ref_file, query_file);
 }

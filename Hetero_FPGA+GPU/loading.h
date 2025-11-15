@@ -8,8 +8,8 @@
 #include "C_utils.h"
 
 // ================= USER DEFINES =================
-#define QUERY_FILE     "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/Queries/que2_128.fasta"
-#define REFERENCE_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/References/ref3_10M.fasta"
+#define QUERY_FILE     "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/Queries/multique0_256.fasta"
+#define REFERENCE_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/References/multiref0_1M.fasta"
 #define FPGA_OUTPUT_DIR "./fpga_splits/"
 
 // Speed ratio for splitting reference
