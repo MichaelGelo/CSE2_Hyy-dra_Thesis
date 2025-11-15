@@ -8,7 +8,7 @@
 #include "C_utils.h"
 
 // ================= USER DEFINES =================
-#define QUERY_FILE     "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/Queries/multique0_256.fasta"
+#define QUERY_FILE     "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/Queries/multique2_128.fasta"
 #define REFERENCE_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/References/multiref0_1M.fasta"
 #define FPGA_OUTPUT_DIR "./fpga_splits/"
 
@@ -117,8 +117,10 @@ static char** load_queries(int *num_queries_out) {
 }
 
 // Load references, split GPU/FPGA, store GPU in-memory
-static char** load_references_gpu_fpga(int *num_refs_out, char ***gpu_refs_out, int **gpu_lens_out) {
+static char** load_references_gpu_fpga(int *num_refs_out, char ***gpu_refs_out, int **gpu_lens_out, int query_len) {
     int num_refs = 0;
+    
+
     char **refs = parse_fasta_file(REFERENCE_FILE, &num_refs);
     if (!refs || num_refs <= 0) return NULL;
 
@@ -130,7 +132,7 @@ static char** load_references_gpu_fpga(int *num_refs_out, char ***gpu_refs_out, 
     }
 
     for (int i = 0; i < num_refs; ++i) {
-        split_reference_for_fpga_gpu(refs[i], 256, &gpu_refs[i], &gpu_lens[i], i);
+        split_reference_for_fpga_gpu(refs[i], query_len, &gpu_refs[i], &gpu_lens[i], i);
     }
 
     *gpu_refs_out = gpu_refs;

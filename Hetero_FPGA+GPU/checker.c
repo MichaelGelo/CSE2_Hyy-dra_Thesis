@@ -6,7 +6,7 @@
 #include <string.h>
 #include "C_utils.h"
 
-#define QUERY_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/Queries/multique0_256.fasta"
+#define QUERY_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/Queries/multique2_128.fasta"
 #define REFERENCE_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/References/multiref0_1M.fasta"
 #define LOOP_COUNT 1
 

@@ -767,7 +767,7 @@ int main() {
     char** query_seqs = load_queries(&num_queries);
     char **gpu_refs = NULL;
     int *gpu_ref_lens = NULL;
-    char** orig_refs = load_references_gpu_fpga(&num_orig_refs, &gpu_refs, &gpu_ref_lens);
+    char** orig_refs = load_references_gpu_fpga(&num_orig_refs, &gpu_refs, &gpu_ref_lens, strlen(query_seqs[0]));
 
     printf("Loaded %d queries and %d references\n", num_queries, num_orig_refs);
 
