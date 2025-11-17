@@ -7,8 +7,8 @@
 // ============================================================================
 // FILE PATHS
 // ============================================================================
-#define QUERY_FILE     "que5_256.fasta"
-#define REFERENCE_FILE "ref5_50M.fasta"
+#define QUERY_FILE     "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/Testing/platypusexact.fasta"
+#define REFERENCE_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/Testing/Platypus.fasta"
 
 // ============================================================================
 // MEMORY LIMITS

@@ -5,9 +5,9 @@
 //#include <windows.h>
 #include <string.h>
 #include "C_utils.h"
-
-#define QUERY_FILE "C:/Users/12255988/Documents/CSE2_Hyy-dra_Thesis/Resources/Queries/que5_256.fasta"
-#define REFERENCE_FILE "C:/Users/12255988/Documents/CSE2_Hyy-dra_Thesis/Resources/References/ref5_50M.fasta"
+#include <sys/time.h>
+#define QUERY_FILE     "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/Testing/platypusexact.fasta"
+#define REFERENCE_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/Testing/Platypus.fasta"
 #define LOOP_COUNT 1
 
 typedef uint64_t u64;
@@ -84,7 +84,8 @@ int main(){
 
     for(int loop=0;loop<LOOP_COUNT;loop++){
         //LARGE_INTEGER t_start,t_end; QueryPerformanceCounter(&t_start);
-
+        struct timeval t_start, t_end;
+        gettimeofday(&t_start, NULL);
         for(int q=0;q<num_queries;q++){
             for(int r=0;r<num_refs;r++){
                 int n=(int)strlen(refs[r]);
@@ -124,9 +125,12 @@ int main(){
         }
         //QueryPerformanceCounter(&t_end);
         //total_time += (double)(t_end.QuadPart - t_start.QuadPart)/freq.QuadPart;
+        gettimeofday(&t_end, NULL);
+        double elapsed = (t_end.tv_sec - t_start.tv_sec) + (t_end.tv_usec - t_start.tv_usec) / 1e6;
+        total_time += elapsed;
     }
 
-    printf("%d loop Average time: %.6f sec.\n",LOOP_COUNT,total_time/LOOP_COUNT);
+    printf("%d loop Average time: %.6f sec.\n", LOOP_COUNT, total_time/LOOP_COUNT);
 
     for(int i=0;i<num_queries;i++) free(queries[i]); free(queries);
     for(int i=0;i<num_refs;i++) free(refs[i]); free(refs);
