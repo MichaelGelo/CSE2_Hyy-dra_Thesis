@@ -6,8 +6,8 @@
 #include <string.h>
 #include "C_utils.h"
 
-#define QUERY_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/Queries/que4_256.fasta"
-#define REFERENCE_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/References/ref2_1M.fasta"
+#define QUERY_FILE "C:/Users/12255988/Documents/CSE2_Hyy-dra_Thesis/Resources/Queries/que5_256.fasta"
+#define REFERENCE_FILE "C:/Users/12255988/Documents/CSE2_Hyy-dra_Thesis/Resources/References/ref5_50M.fasta"
 #define LOOP_COUNT 1
 
 typedef uint64_t u64;
