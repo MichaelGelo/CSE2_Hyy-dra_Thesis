@@ -31,13 +31,13 @@ typedef struct {
     double total_exec_ms;
 } FPGAResult;
 
-typedef struct {
-    int num_queries;
-    int ref_index;
-    double fpga_time;
-    FPGAResult *results;
-} FPGAThreadArgs;
+void free_fpga_result(FPGAResult *res) {
+    if (res->lowest_indexes) free(res->lowest_indexes);
+    res->lowest_indexes = NULL;
+    res->num_lowest_indexes = 0;
+}
 
+// Single FPGA execution (for one query-ref pair)
 FPGAResult run_single_fpga(const char* ref_file, const char* query_file) {
     FPGAResult result = {0};
     result.final_score = -1;
@@ -172,6 +172,8 @@ FPGAResult run_single_fpga(const char* ref_file, const char* query_file) {
     return result;
 }
 
+// Run FPGA for multiple queries and references
+// Returns 2D array of results: results[query_idx][ref_idx]
 FPGAResult* send_and_run_fpga_single_ref(int num_queries, int ref_index, double *total_time_out) {
     char command[4096];
     char remote_ref[512], remote_que[512];
@@ -264,23 +266,6 @@ FPGAResult* send_and_run_fpga_single_ref(int num_queries, int ref_index, double 
     
     return results;
 }
-void* fpga_thread_func(void* arg) {
-    FPGAThreadArgs* args = (FPGAThreadArgs*)arg;
-    args->results = send_and_run_fpga_single_ref(args->num_queries, args->ref_index, &args->fpga_time);
-    return NULL;
-}
-void free_fpga_result(FPGAResult *res) {
-    if (res->lowest_indexes) free(res->lowest_indexes);
-    res->lowest_indexes = NULL;
-    res->num_lowest_indexes = 0;
-}
-
-// Single FPGA execution (for one query-ref pair)
-
-
-// Run FPGA for multiple queries and references
-// Returns 2D array of results: results[query_idx][ref_idx]
-
 
 // Free the 2D results array
 void free_fpga_results_multi(FPGAResult** results, int num_queries, int num_refs) {

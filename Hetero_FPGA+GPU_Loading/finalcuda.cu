@@ -820,39 +820,35 @@ int main() {
         pthread_t gpu_thread;
         pthread_create(&gpu_thread, NULL, run_hyyro_gpu, &gpu_args);
 
-        // --- Start FPGA thread ---
-        FPGAThreadArgs fpga_args = { .num_queries = num_queries, .ref_index = ref_idx };
-        pthread_t fpga_thread;
-        pthread_create(&fpga_thread, NULL, fpga_thread_func, &fpga_args);
+        // --- Run FPGA for this reference ---
+        double fpga_time = 0.0;
+        FPGAResult *fpga_results = send_and_run_fpga_single_ref(num_queries, ref_idx, &fpga_time);
 
-        // --- Start ratio thread ---
-        RatioThreadArgs ratio_args = { .prev_gpu_time = gpu_args.avg_execution_time,
-                                    .prev_fpga_time = fpga_args.fpga_time };
-        pthread_t ratio_thread;
-        pthread_create(&ratio_thread, NULL, ratio_thread_func, &ratio_args);
-
-        // --- Wait for GPU thread ---
+        // --- Wait GPU thread ---
         pthread_join(gpu_thread, NULL);
+        double gpu_time = gpu_args.avg_execution_time;
 
-        // --- Wait for FPGA thread ---
-        pthread_join(fpga_thread, NULL);
+        printf("=== GPU Complete: %.6f sec ===\n", gpu_time);
+        printf("=== FPGA Complete: %.6f sec ===\n", fpga_time);
 
-        // --- Wait for ratio thread ---
-        pthread_join(ratio_thread, NULL);
-
-        // --- Update ratio state ---
-        ratio_state.gpu_ratio = ratio_args.new_gpu_ratio;
-        ratio_state.fpga_ratio = 1.0f - ratio_args.new_gpu_ratio;
-        ratio_state.is_calibrated = 1;
-
-        // --- Store FPGA results ---
-        FPGAResult *fpga_results = fpga_args.results;
+        // --- Start ratio calculation thread for NEXT reference ---
+        ratio_args.prev_gpu_time = gpu_time;
+        ratio_args.prev_fpga_time = fpga_time;
+        pthread_create(&ratio_thread, NULL, ratio_thread_func, &ratio_args);
 
         // --- Store results ---
         all_gpu_results[ref_idx] = gpu_args;
         all_fpga_results[ref_idx] = fpga_results;
 
+        // --- Wait for ratio thread to finish and update ratio state ---
+        pthread_join(ratio_thread, NULL);
+        ratio_state.gpu_ratio = ratio_args.new_gpu_ratio;
+        ratio_state.fpga_ratio = 1.0f - ratio_args.new_gpu_ratio;
+        ratio_state.is_calibrated = 1;
 
+        printf("\n--- Updated Speed Ratio for next reference ---\n");
+        printf("GPU ratio = %.3f, FPGA ratio = %.3f\n", ratio_state.gpu_ratio, ratio_state.fpga_ratio);
+        printf("--- End Update ---\n");
     }
 
     // ========== MERGE ALL RESULTS ==========
