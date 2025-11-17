@@ -752,66 +752,112 @@ void* run_hyyro_gpu(void* args) {
 
     return NULL;
 }
-
-
 // ---------- Host main ----------
+typedef struct {
+    double gpu_time;
+    double fpga_time;
+    float gpu_ratio;
+    float fpga_ratio;
+    int is_calibrated;
+} SpeedRatioState;
+
+
+// ---------- MAIN FUNCTION ----------
 
 int main() {
-    printf("=== Hyyrö Bit-Vector Levenshtein with Partitioning ===\n");
+    printf("=== Hyyrö Bit-Vector Levenshtein with Adaptive Partitioning ===\n");
     printf("Loading queries and references from memory using loading.h\n");
 
-    int num_queries = 0;
-    int num_orig_refs = 0;
+    int num_queries = 0, num_orig_refs = 0;
+    char **query_seqs = load_queries(&num_queries);
+    if (!query_seqs || num_queries == 0) { fprintf(stderr, "Failed to load queries\n"); return -1; }
 
-    // Load queries and references
-    char** query_seqs = load_queries(&num_queries);
-    char **gpu_refs = NULL;
-    int *gpu_ref_lens = NULL;
-    char** orig_refs = load_references_gpu_fpga(&num_orig_refs, &gpu_refs, &gpu_ref_lens, strlen(query_seqs[0]));
+    char **orig_refs = parse_fasta_file(REFERENCE_FILE, &num_orig_refs);
+    if (!orig_refs || num_orig_refs <= 0) { fprintf(stderr, "Failed to load references\n"); return -1; }
 
     printf("Loaded %d queries and %d references\n", num_queries, num_orig_refs);
 
-    // Prepare arguments for GPU thread
-    GPUArgs gpu_args = {
-        .num_queries = num_queries,
-        .num_orig_refs = num_orig_refs,
-        .query_seqs = query_seqs,
-        .orig_refs = gpu_refs,
-        .output_lowest_scores = NULL,
-        .output_lowest_indices = NULL,
-        .output_lowest_counts = NULL,
-        .output_last_scores = NULL,
-        .output_hit_indices = NULL,
-        .output_hit_counts = NULL,
-        .avg_execution_time = 0.0,
-        .success = 0
-    };
+    SpeedRatioState ratio_state = {0.0, 0.0, GPU_SPEED_RATIO, FPGA_SPEED_RATIO, 0};
+    int query_len = (int)strlen(query_seqs[0]);
 
-    // Create GPU thread
-    pthread_t gpu_thread;
-    pthread_create(&gpu_thread, NULL, run_hyyro_gpu, &gpu_args);
+    char **all_gpu_refs = (char**)malloc(sizeof(char*) * num_orig_refs);
+    int *all_gpu_ref_lens = (int*)malloc(sizeof(int) * num_orig_refs);
+    if (!all_gpu_refs || !all_gpu_ref_lens) { fprintf(stderr, "OOM\n"); return -1; }
 
-    // ========== Run FPGA for ALL query-ref pairs (in main thread) ==========
-    printf("\n=== Starting FPGA Processing ===\n");
-    FPGAResult** fpga_results = send_and_run_fpga_multi(num_queries, num_orig_refs);
-    printf("=== FPGA Processing Complete ===\n\n");
+    GPUArgs *all_gpu_results = (GPUArgs*)calloc(num_orig_refs, sizeof(GPUArgs));
+    FPGAResult **all_fpga_results = (FPGAResult**)calloc(num_orig_refs, sizeof(FPGAResult*));
 
-    // Wait for GPU thread to finish
-    pthread_join(gpu_thread, NULL);
+    // Precompute ratio thread handle and args
+    pthread_t ratio_thread;
+    RatioThreadArgs ratio_args = {0};
 
-    // Check GPU success
-    if (!gpu_args.success) {
-        printf("GPU computation failed!\n");
-        free_fpga_results_multi(fpga_results, num_queries, num_orig_refs);
-        return -1;
+    for (int ref_idx = 0; ref_idx < num_orig_refs; ref_idx++) {
+        printf("\n============================================================\n");
+        printf("Processing Reference %d/%d\n", ref_idx + 1, num_orig_refs);
+        printf("Current GPU ratio: %.3f, FPGA ratio: %.3f\n",
+               ratio_state.gpu_ratio, 1.0f - ratio_state.gpu_ratio);
+
+        // --- Split reference for GPU/FPGA ---
+        split_reference_for_fpga_gpu(orig_refs[ref_idx], query_len,
+                                     &all_gpu_refs[ref_idx], &all_gpu_ref_lens[ref_idx],
+                                     ref_idx, ratio_state.gpu_ratio);
+
+        // --- Start GPU thread ---
+        GPUArgs gpu_args = {
+            .num_queries = num_queries,
+            .num_orig_refs = 1,
+            .query_seqs = query_seqs,
+            .orig_refs = &all_gpu_refs[ref_idx],
+            .output_lowest_scores = NULL,
+            .output_lowest_indices = NULL,
+            .output_lowest_counts = NULL,
+            .output_last_scores = NULL,
+            .output_hit_indices = NULL,
+            .output_hit_counts = NULL,
+            .avg_execution_time = 0.0,
+            .success = 0
+        };
+        pthread_t gpu_thread;
+        pthread_create(&gpu_thread, NULL, run_hyyro_gpu, &gpu_args);
+
+        // --- Start FPGA thread ---
+        FPGAThreadArgs fpga_args = { .num_queries = num_queries, .ref_index = ref_idx };
+        pthread_t fpga_thread;
+        pthread_create(&fpga_thread, NULL, fpga_thread_func, &fpga_args);
+
+        // --- Start ratio thread ---
+        RatioThreadArgs ratio_args = { .prev_gpu_time = gpu_args.avg_execution_time,
+                                    .prev_fpga_time = fpga_args.fpga_time };
+        pthread_t ratio_thread;
+        pthread_create(&ratio_thread, NULL, ratio_thread_func, &ratio_args);
+
+        // --- Wait for GPU thread ---
+        pthread_join(gpu_thread, NULL);
+
+        // --- Wait for FPGA thread ---
+        pthread_join(fpga_thread, NULL);
+
+        // --- Wait for ratio thread ---
+        pthread_join(ratio_thread, NULL);
+
+        // --- Update ratio state ---
+        ratio_state.gpu_ratio = ratio_args.new_gpu_ratio;
+        ratio_state.fpga_ratio = 1.0f - ratio_args.new_gpu_ratio;
+        ratio_state.is_calibrated = 1;
+
+        // --- Store FPGA results ---
+        FPGAResult *fpga_results = fpga_args.results;
+
+        // --- Store results ---
+        all_gpu_results[ref_idx] = gpu_args;
+        all_fpga_results[ref_idx] = fpga_results;
+
+
     }
 
-    
+    // ========== MERGE ALL RESULTS ==========
+    printf("\n\n===== Merging All Results =====\n\n");
 
-    // ========== MERGE RESULTS FOR ALL QUERY-REF PAIRS ==========
-    printf("\n\n===== Merged Results for All Pairs =====\n\n");
-
-    // Allocate arrays to store merged results for all pairs
     int total_pairs = num_queries * num_orig_refs;
     int* merged_lowest_scores = (int*)malloc(total_pairs * sizeof(int));
     int** merged_lowest_indices = (int**)malloc(total_pairs * sizeof(int*));
@@ -825,18 +871,16 @@ int main() {
             printf("Merging: Query %d vs Reference %d\n", q, r);
             printf("=============================================================\n");
 
-            // Get GPU results for this pair
-            int lowest_gpu = gpu_args.output_lowest_scores[idx];
-            int gpu_lowest_count = gpu_args.output_lowest_counts[idx];
+            long long gpu_idx = q;
+            int lowest_gpu = all_gpu_results[r].output_lowest_scores[gpu_idx];
+            int gpu_lowest_count = all_gpu_results[r].output_lowest_counts[gpu_idx];
             
-            // Get FPGA results for this pair
-            int lowest_fpga = fpga_results[q][r].lowest_score;
-            int fpga_lowest_count = fpga_results[q][r].num_lowest_indexes;
+            int lowest_fpga = all_fpga_results[r][q].lowest_score;
+            int fpga_lowest_count = all_fpga_results[r][q].num_lowest_indexes;
 
             printf("GPU:  Lowest Score = %d, Count = %d\n", lowest_gpu, gpu_lowest_count);
             printf("FPGA: Lowest Score = %d, Count = %d\n", lowest_fpga, fpga_lowest_count);
 
-            // Determine merged lowest score
             int final_merged_lowest_score = -1;
             if (lowest_gpu != 0x7f7f7f7f && lowest_fpga != -1) {
                 final_merged_lowest_score = MIN(lowest_gpu, lowest_fpga);
@@ -848,7 +892,6 @@ int main() {
 
             merged_lowest_scores[idx] = final_merged_lowest_score;
 
-            // Count total indexes
             int total_index_count = 0;
             if (final_merged_lowest_score != -1) {
                 if (lowest_gpu == final_merged_lowest_score) {
@@ -859,38 +902,35 @@ int main() {
                 }
             }
 
-            // Allocate and fill merged index array
             if (total_index_count > 0) {
                 merged_lowest_indices[idx] = (int*)malloc(total_index_count * sizeof(int));
                 int write_pos = 0;
 
-                // Add GPU indexes if they match
-                if (lowest_gpu == final_merged_lowest_score && gpu_args.output_lowest_indices[idx] != NULL) {
+                if (lowest_gpu == final_merged_lowest_score && 
+                    all_gpu_results[r].output_lowest_indices[gpu_idx] != NULL) {
                     for (int i = 0; i < gpu_lowest_count; i++) {
-                        merged_lowest_indices[idx][write_pos++] = gpu_args.output_lowest_indices[idx][i];
+                        merged_lowest_indices[idx][write_pos++] = 
+                            all_gpu_results[r].output_lowest_indices[gpu_idx][i];
                     }
                 }
 
-                // Add FPGA indexes if they match (with offset adjustment)
-                if (lowest_fpga == final_merged_lowest_score && fpga_results[q][r].lowest_indexes != NULL) {
-                    int gpu_len = (int)(strlen(orig_refs[r]) * GPU_SPEED_RATIO);
-                    int query_len = (int)strlen(query_seqs[q]);  // Get actual query length
+                if (lowest_fpga == final_merged_lowest_score && 
+                    all_fpga_results[r][q].lowest_indexes != NULL) {
+                    int gpu_len = all_gpu_ref_lens[r];
                     for (int i = 0; i < fpga_lowest_count; i++) {
-                        // Adjust: fpga_index + gpu_length - query_length
-                        merged_lowest_indices[idx][write_pos++] = fpga_results[q][r].lowest_indexes[i] + gpu_len - query_len + 1;
+                        merged_lowest_indices[idx][write_pos++] = 
+                            all_fpga_results[r][q].lowest_indexes[i] + gpu_len - query_len + 1;
                     }
                 }
 
                 merged_index_counts[idx] = write_pos;
-
-                // Sort merged indexes
-                qsort(merged_lowest_indices[idx], merged_index_counts[idx], sizeof(int), compare_ints);
+                qsort(merged_lowest_indices[idx], merged_index_counts[idx], 
+                      sizeof(int), compare_ints);
             } else {
                 merged_lowest_indices[idx] = NULL;
                 merged_index_counts[idx] = 0;
             }
 
-            // Print merged results for this pair
             printf("\nMerged Results:\n");
             printf("  Final Lowest Score: %d\n", merged_lowest_scores[idx]);
             printf("  Total Index Count: %d\n", merged_index_counts[idx]);
@@ -901,33 +941,25 @@ int main() {
                     printf("%d", merged_lowest_indices[idx][i]);
                 }
                 printf("]\n");
-            } else {
-                printf("  Merged Lowest Indexes: N/A\n");
             }
             printf("\n");
         }
     }
 
     printf("\n=============================================================\n");
-    printf("Summary: All %d query-reference pairs processed and merged\n", total_pairs);
+    printf("Summary: All %d pairs processed with adaptive ratios\n", total_pairs);
+    printf("Final GPU ratio: %.3f, FPGA ratio: %.3f\n", 
+           ratio_state.gpu_ratio, ratio_state.fpga_ratio);
     printf("=============================================================\n");
 
-    // ========== NOW USE THE MERGED RESULTS ==========
-    // Example: Access specific pair
-    int example_q = 0;
-    int example_r = 0;
-    long long example_idx = (long long)example_q * num_orig_refs + example_r;
-    
-    printf("\nExample Access - Q%d vs R%d:\n", example_q, example_r);
-    printf("  Merged Lowest Score: %d\n", merged_lowest_scores[example_idx]);
-    printf("  Merged Index Count: %d\n", merged_index_counts[example_idx]);
-
     // ========== CLEANUP ==========
-    
-    // Free FPGA results
-    free_fpga_results_multi(fpga_results, num_queries, num_orig_refs);
+    for (int r = 0; r < num_orig_refs; r++) {
+        if (all_fpga_results[r]) {
+            free_fpga_results_single_ref(all_fpga_results[r], num_queries);
+        }
+    }
+    free(all_fpga_results);
 
-    // Free merged results
     for (int i = 0; i < total_pairs; i++) {
         if (merged_lowest_indices[i]) free(merged_lowest_indices[i]);
     }
@@ -935,24 +967,37 @@ int main() {
     free(merged_lowest_indices);
     free(merged_index_counts);
 
-    // Cleanup GPU results
-    for (long long i = 0; i < total_pairs; i++) {
-        if (gpu_args.output_hit_indices[i]) free(gpu_args.output_hit_indices[i]);
-        if (gpu_args.output_lowest_indices[i]) free(gpu_args.output_lowest_indices[i]);
+    for (int r = 0; r < num_orig_refs; r++) {
+        for (int q = 0; q < num_queries; q++) {
+            if (all_gpu_results[r].output_hit_indices && 
+                all_gpu_results[r].output_hit_indices[q]) {
+                free(all_gpu_results[r].output_hit_indices[q]);
+            }
+            if (all_gpu_results[r].output_lowest_indices && 
+                all_gpu_results[r].output_lowest_indices[q]) {
+                free(all_gpu_results[r].output_lowest_indices[q]);
+            }
+        }
+        if (all_gpu_results[r].output_lowest_scores) free(all_gpu_results[r].output_lowest_scores);
+        if (all_gpu_results[r].output_lowest_indices) free(all_gpu_results[r].output_lowest_indices);
+        if (all_gpu_results[r].output_lowest_counts) free(all_gpu_results[r].output_lowest_counts);
+        if (all_gpu_results[r].output_last_scores) free(all_gpu_results[r].output_last_scores);
+        if (all_gpu_results[r].output_hit_indices) free(all_gpu_results[r].output_hit_indices);
+        if (all_gpu_results[r].output_hit_counts) free(all_gpu_results[r].output_hit_counts);
     }
+    free(all_gpu_results);
 
-    free(gpu_args.output_lowest_scores);
-    free(gpu_args.output_lowest_indices);
-    free(gpu_args.output_lowest_counts);
-    free(gpu_args.output_last_scores);
-    free(gpu_args.output_hit_indices);
-    free(gpu_args.output_hit_counts);
-
-    // Cleanup queries/references
     for (int i = 0; i < num_queries; i++) free(query_seqs[i]);
     free(query_seqs);
+    
     for (int i = 0; i < num_orig_refs; i++) free(orig_refs[i]);
     free(orig_refs);
+    
+    for (int i = 0; i < num_orig_refs; i++) {
+        if (all_gpu_refs[i]) free(all_gpu_refs[i]);
+    }
+    free(all_gpu_refs);
+    free(all_gpu_ref_lens);
 
     return 0;
 }

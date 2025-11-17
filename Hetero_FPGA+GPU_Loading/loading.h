@@ -9,13 +9,53 @@
 
 // ================= USER DEFINES =================
 #define QUERY_FILE     "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/Queries/multique2_128.fasta"
-#define REFERENCE_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/References/multiref0_1M.fasta"
+#define REFERENCE_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/References/multipleref1_1M.fasta"
 #define FPGA_OUTPUT_DIR "./fpga_splits/"
 
 // Speed ratio for splitting reference
-#define FPGA_SPEED_RATIO 0.6f
-#define GPU_SPEED_RATIO  0.4f
+#define FPGA_SPEED_RATIO 0.5f
+#define GPU_SPEED_RATIO  0.5f
 // ===============================================
+
+typedef struct {
+    double prev_gpu_time;
+    double prev_fpga_time;
+    float new_gpu_ratio;
+} RatioThreadArgs;
+
+
+static float calculate_gpu_ratio(double gpu_time, double fpga_time) {
+    if (gpu_time <= 0 || fpga_time <= 0) {
+        return GPU_SPEED_RATIO; // fallback to default
+    }
+    
+    // The faster device should get MORE work
+    // Ratio based on inverse of time (throughput)
+    double gpu_throughput = 1.0 / gpu_time;
+    double fpga_throughput = 1.0 / fpga_time;
+    double total_throughput = gpu_throughput + fpga_throughput;
+    
+    float new_gpu_ratio = (float)(gpu_throughput / total_throughput);
+    
+    // Clamp to reasonable bounds
+
+    
+    return new_gpu_ratio;
+}
+
+// Ratio calculation thread function
+void* ratio_thread_func(void* arg) {
+    RatioThreadArgs* args = (RatioThreadArgs*)arg;
+
+    // Calculate new GPU ratio
+    args->new_gpu_ratio = calculate_gpu_ratio(args->prev_gpu_time, args->prev_fpga_time);
+
+    // Print the computed ratios
+    printf("[Ratio Thread] Computed speed ratios: GPU = %.3f, FPGA = %.3f\n",
+           args->new_gpu_ratio, 1.0f - args->new_gpu_ratio);
+
+    return NULL;
+}
 
 // Utility: write sequence to FASTA (line width 60)
 static void write_fasta(FILE *file, const char *sequence) {
@@ -56,10 +96,10 @@ static void save_fpga_split_to_fasta(const char *sequence, int start_index, int 
 
 // Split reference into GPU in-memory and FPGA FASTA
 static void split_reference_for_fpga_gpu(const char *sequence, int query_len,
-                                        char **gpu_ref_out, int *gpu_len_out, int ref_no)
+                                        char **gpu_ref_out, int *gpu_len_out, int ref_no, float gpu_speed_ratio)
 {
     int total_len = (int)strlen(sequence);
-    int gpu_len = (int)(total_len * GPU_SPEED_RATIO);
+    int gpu_len = (int)(total_len * gpu_speed_ratio);
     if (gpu_len > total_len) gpu_len = total_len;
 
     int fpga_start = gpu_len - (query_len - 1);
@@ -133,7 +173,7 @@ static char** load_references_gpu_fpga(int *num_refs_out, char ***gpu_refs_out, 
 
     for (int i = 0; i < num_refs; ++i) {  //dito ung dynamic and ung threading
         //new speed ratio
-        split_reference_for_fpga_gpu(refs[i], query_len, &gpu_refs[i], &gpu_lens[i], i);
+        //split_reference_for_fpga_gpu(refs[i], query_len, &gpu_refs[i], &gpu_lens[i], i);
         //get speed ratio
     }
 
@@ -142,6 +182,6 @@ static char** load_references_gpu_fpga(int *num_refs_out, char ***gpu_refs_out, 
     *num_refs_out = num_refs;
     return refs;
 }
-    if (fpga_start < 0) fpga_start = 0;
+  
 
 #endif // LOADING_H
