@@ -2,13 +2,18 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <limits.h>
-//#include <windows.h>
 #include <string.h>
 #include "C_utils.h"
+
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <sys/time.h>
-#define QUERY_FILE     "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/Testing/platypusexact.fasta"
-#define REFERENCE_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/Testing/Platypus.fasta"
-#define LOOP_COUNT 1
+#endif
+
+#define QUERY_FILE     "D:/download/College Life/Thesis/CSE2_Hyy-dra_Thesis/Resources/mque_2_256.fasta"
+#define REFERENCE_FILE "D:/download/College Life/Thesis/CSE2_Hyy-dra_Thesis/Resources/mref_8_50M.fasta"
+#define LOOP_COUNT 10
 
 typedef uint64_t u64;
 #define BV_WORDS 4   // 256 bits
@@ -23,11 +28,17 @@ static inline void bv_and(const BV* a,const BV* b,BV* r){for(int i=0;i<BV_WORDS;
 static inline void bv_xor(const BV* a,const BV* b,BV* r){for(int i=0;i<BV_WORDS;i++) r->w[i]=a->w[i]^b->w[i];}
 static inline void bv_not(const BV* a,BV* r){for(int i=0;i<BV_WORDS;i++) r->w[i]=~a->w[i];}
 static inline void bv_shl1(const BV* a,BV* r){u64 c=0; for(int i=0;i<BV_WORDS;i++){u64 nc=a->w[i]>>63; r->w[i]=(a->w[i]<<1)|c; c=nc;}}
-static inline void bv_add(const BV* a,const BV* b,BV* r){unsigned __int128 c=0; for(int i=0;i<BV_WORDS;i++){unsigned __int128 s=(unsigned __int128)a->w[i]+b->w[i]+c; r->w[i]=(u64)s; c=s>>64;}}
+static inline void bv_add(const BV* a, const BV* b, BV* r) {
+    unsigned __int128 c = 0;
+    for (int i = 0; i < BV_WORDS; i++) {
+        unsigned __int128 s = (unsigned __int128)a->w[i] + b->w[i] + c;
+        r->w[i] = (u64)s; c = s >> 64;
+    }
+}
 static inline int bv_test_msb(const BV* v,int m){int w=(m-1)/64,b=(m-1)%64; return (v->w[w]>>b)&1;}
 static inline void bv_mask_top(BV* v,int m){if(m>=BV_WORDS*64) return; int w=(m-1)/64,b=(m-1)%64; u64 mask=(b==63)?~0ULL:((1ULL<<(b+1))-1); for(int i=w+1;i<BV_WORDS;i++) v->w[i]=0; v->w[w]&=mask;}
 
-/* --- Myers 256-bit bit-parallel Levenshtein --- */
+/* --- Levenshtein --- */
 int bit_vector_levenshtein(const char* query,const char* ref,int* scores,
                             int** hit_idxs,int* hit_count,
                             int** low_idxs,int* low_count,int* lowest_score){
@@ -79,13 +90,20 @@ int main(){
     char **refs=parse_fasta_file(REFERENCE_FILE,&num_refs);
     if(!queries || !refs){fprintf(stderr,"Failed to load sequences\n"); return 1;}
 
-    //LARGE_INTEGER freq; QueryPerformanceFrequency(&freq);
+#ifdef _WIN32
+    LARGE_INTEGER freq;
+    QueryPerformanceFrequency(&freq);
+#endif
     double total_time=0.0;
 
     for(int loop=0;loop<LOOP_COUNT;loop++){
-        //LARGE_INTEGER t_start,t_end; QueryPerformanceCounter(&t_start);
+#ifdef _WIN32
+        LARGE_INTEGER t_start,t_end;
+        QueryPerformanceCounter(&t_start);
+#else
         struct timeval t_start, t_end;
         gettimeofday(&t_start, NULL);
+#endif
         for(int q=0;q<num_queries;q++){
             for(int r=0;r<num_refs;r++){
                 int n=(int)strlen(refs[r]);
@@ -123,11 +141,14 @@ int main(){
                 free(scores); free(hit_idxs); free(low_idxs);
             }
         }
-        //QueryPerformanceCounter(&t_end);
-        //total_time += (double)(t_end.QuadPart - t_start.QuadPart)/freq.QuadPart;
+#ifdef _WIN32
+        QueryPerformanceCounter(&t_end);
+        total_time += (double)(t_end.QuadPart - t_start.QuadPart)/freq.QuadPart;
+#else
         gettimeofday(&t_end, NULL);
         double elapsed = (t_end.tv_sec - t_start.tv_sec) + (t_end.tv_usec - t_start.tv_usec) / 1e6;
         total_time += elapsed;
+#endif
     }
 
     printf("%d loop Average time: %.6f sec.\n", LOOP_COUNT, total_time/LOOP_COUNT);
