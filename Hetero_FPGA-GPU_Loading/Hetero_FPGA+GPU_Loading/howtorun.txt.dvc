@@ -1,0 +1,5 @@
+outs:
+- md5: edf4828aaf4d6eb33ab192eb837b5c95
+  size: 1174
+  hash: md5
+  path: howtorun.txt
