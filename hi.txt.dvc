@@ -1,0 +1,5 @@
+outs:
+- md5: a6cef77b894de673d3e8c8bc1977331b
+  size: 8
+  hash: md5
+  path: hi.txt
