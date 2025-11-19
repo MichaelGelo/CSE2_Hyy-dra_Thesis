@@ -1,0 +1,5 @@
+outs:
+- md5: 899135ea91486e889404760a0a76b088
+  size: 8000168
+  hash: md5
+  path: mref_8_1M.fasta

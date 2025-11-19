@@ -1,0 +1,5 @@
+outs:
+- md5: d3a04a050a6cbad78c5ce2fdc56108c5
+  size: 275
+  hash: md5
+  path: que1_256.fasta

@@ -1,0 +1,5 @@
+outs:
+- md5: eb3c3eb5e288e4c34e543258a828eae5
+  size: 400000176
+  hash: md5
+  path: mref_8_50M.fasta
