@@ -11,8 +11,8 @@
 #define FPGA_SCRIPT     "fpga_code.py"
 
 // Base paths - files will be fpga_ref0.fasta, fpga_ref1.fasta, etc.
-#define HOST_FPGA_REF_DIR   "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Hetero_FPGA+GPU_Loading/fpga_splits"
-#define HOST_FPGA_QUERY_DIR "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Hetero_FPGA+GPU_Loading/fpga_splits"
+#define HOST_FPGA_REF_DIR   "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Hetero_FPGA-GPU_Loading/fpga_splits"
+#define HOST_FPGA_QUERY_DIR "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Hetero_FPGA-GPU_Loading/fpga_splits"
 
 // Path to private SSH key
 #define SSH_KEY         "~/.ssh/id_rsa_fpga"
