@@ -4,8 +4,8 @@
 // ============================================================================
 // FILE PATHS
 // ============================================================================
-#define QUERY_FILE "C:\\Users\\gelod.MSI\\Documents\\Files\\CSE2_Hyy-dra_Thesis\\Resources\\mque_2_256.fasta"
-#define REFERENCE_FILE "C:\\Users\\gelod.MSI\\Documents\\Files\\CSE2_Hyy-dra_Thesis\\Resources\\mref_8_1M.fasta"
+#define QUERY_FILE     "C:/Users/gelod.MSI/OneDrive/Documents/Files/CSE2_Hyy-dra_Thesis/Resources/que1_256.fasta"
+#define REFERENCE_FILE "C:/Users/gelod.MSI/OneDrive/Documents/Files/CSE2_Hyy-dra_Thesis/Resources/ref_1M.fasta"
 
 // ============================================================================
 // MEMORY LIMITS

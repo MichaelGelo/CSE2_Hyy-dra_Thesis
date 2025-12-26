@@ -1,13 +1,13 @@
 run checker
 cd "d:\download\College Life\Thesis\CSE2_Hyy-dra_Thesis\Final_GPU\" && gcc checker.c C_utils.c -o checker && "d:\download\College Life\Thesis\CSE2_Hyy-dra_Thesis\Final_GPU\"checker
 
-gcc checker.c C_utils.c -o checker
+gcc HyDam_checker.c C_utils.c -o HyDam_checker
 
 
 # Note: -allow-unsupported-compiler is required because VS2022 updates often outpace CUDA support.
 # This is safe here as the code uses standard C types, avoiding complex C++ STL ABI conflicts.
 # For GTX 1650, use -arch=sm_75. For Jetson Orin, use -arch=sm_87.
-nvcc -allow-unsupported-compiler -O3 -diag-suppress=177 -arch=sm_75 homocuda.cu C_utils.c -o homocuda
+nvcc -O3 -diag-suppress=177 -arch=sm_75 homocuda.cu C_utils.c -o homocuda
 
 ./homocuda
 ./checker
