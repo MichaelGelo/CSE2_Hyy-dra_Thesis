@@ -1,9 +1,13 @@
 run checker
 cd "d:\download\College Life\Thesis\CSE2_Hyy-dra_Thesis\Final_GPU\" && gcc checker.c C_utils.c -o checker && "d:\download\College Life\Thesis\CSE2_Hyy-dra_Thesis\Final_GPU\"checker
 
-gcc HyDam_checker.c C_utils.c -o HyDam_checker
+gcc [HyDam_checker].c -o HyDam_checker &&./HyDam_checker
 
-nvcc -O3 -diag-suppress=177 -arch=sm_75 homocuda.cu -o homocuda
+
+
+nvcc -O3 -diag-suppress=177 -arch=sm_75 homocuda.cu -o homocuda && ./homocuda
+
+
 
 ./homocuda
 ./checker

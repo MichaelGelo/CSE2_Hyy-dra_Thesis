@@ -3,11 +3,11 @@
 #include <stdint.h>
 #include <limits.h>
 #include <string.h>
-#include "cpu_utils.h"
+#include "hyrro_io.h"
 #include <sys/time.h>
 
-#define QUERY_FILE     "C:/Users/gelod.MSI/OneDrive/Documents/Files/CSE2_Hyy-dra_Thesis/Resources/que1_256.fasta"
-#define REFERENCE_FILE "C:/Users/gelod.MSI/OneDrive/Documents/Files/CSE2_Hyy-dra_Thesis/Resources/ref_1M.fasta"
+#define QUERY_FILE     "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/que1_256.fasta"
+#define REFERENCE_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/ref_1M.fasta"
 #define LOOP_COUNT 1
 
 typedef uint64_t u64;
