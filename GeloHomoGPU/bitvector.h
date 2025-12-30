@@ -1,11 +1,12 @@
 // bitvector.h
-// Bit-vector operations for Levenshtein distance computation
-// Provides optimized 256-bit vector operations using 4x 64-bit words
+// Bit-vector operations and Eq table construction for Levenshtein computation
 
 #ifndef BITVECTOR_H
 #define BITVECTOR_H
-
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
 
 // ============================================================================
 // CONSTANTS
@@ -13,7 +14,8 @@
 #define BV_WORDS 4
 
 // ============================================================================
-// TYPE DEFINITIONS
+// BIT-VECTOR TYPE
+// 256-bit vector using 4x 64-bit words for pattern matching
 // ============================================================================
 typedef struct { 
     uint64_t w[BV_WORDS]; 
@@ -21,8 +23,9 @@ typedef struct {
 
 // ============================================================================
 // BIT-VECTOR OPERATIONS
-// Sets all words in bit-vector to the specified value
+// Optimized operations for both host and device (GPU) execution
 // ============================================================================
+
 static __forceinline__ __host__ __device__ 
 void bvSetAll(bv_t* out, uint64_t v) {
     #ifdef __CUDA_ARCH__
@@ -33,9 +36,6 @@ void bvSetAll(bv_t* out, uint64_t v) {
     }
 }
 
-// ============================================================================
-// Clears all bits in the bit-vector to zero
-// ============================================================================
 static __forceinline__ __host__ __device__ 
 void bvClear(bv_t* out) {
     #ifdef __CUDA_ARCH__
@@ -46,9 +46,6 @@ void bvClear(bv_t* out) {
     }
 }
 
-// ============================================================================
-// Copies bit-vector from source to destination
-// ============================================================================
 static __forceinline__ __host__ __device__ 
 void bvCopy(bv_t* out, const bv_t* in) {
     #ifdef __CUDA_ARCH__
@@ -59,9 +56,6 @@ void bvCopy(bv_t* out, const bv_t* in) {
     }
 }
 
-// ============================================================================
-// Bitwise OR operation: out = a | b
-// ============================================================================
 static __forceinline__ __host__ __device__ 
 void bvOr(bv_t* out, const bv_t* a, const bv_t* b) {
     #ifdef __CUDA_ARCH__
@@ -72,9 +66,6 @@ void bvOr(bv_t* out, const bv_t* a, const bv_t* b) {
     }
 }
 
-// ============================================================================
-// Bitwise AND operation: out = a & b
-// ============================================================================
 static __forceinline__ __host__ __device__ 
 void bvAnd(bv_t* out, const bv_t* a, const bv_t* b) {
     #ifdef __CUDA_ARCH__
@@ -85,9 +76,6 @@ void bvAnd(bv_t* out, const bv_t* a, const bv_t* b) {
     }
 }
 
-// ============================================================================
-// Bitwise XOR operation: out = a ^ b
-// ============================================================================
 static __forceinline__ __host__ __device__ 
 void bvXor(bv_t* out, const bv_t* a, const bv_t* b) {
     #ifdef __CUDA_ARCH__
@@ -98,9 +86,6 @@ void bvXor(bv_t* out, const bv_t* a, const bv_t* b) {
     }
 }
 
-// ============================================================================
-// Bitwise NOT operation: out = ~a
-// ============================================================================
 static __forceinline__ __host__ __device__ 
 void bvNot(bv_t* out, const bv_t* a) {
     #ifdef __CUDA_ARCH__
@@ -111,9 +96,6 @@ void bvNot(bv_t* out, const bv_t* a) {
     }
 }
 
-// ============================================================================
-// Left shift by 1 bit with carry propagation across words
-// ============================================================================
 static __forceinline__ __host__ __device__ 
 void bvShl1(bv_t* out, const bv_t* in) {
     uint64_t carry[BV_WORDS - 1];
@@ -133,9 +115,6 @@ void bvShl1(bv_t* out, const bv_t* in) {
     }
 }
 
-// ============================================================================
-// Right shift by 1 bit with carry propagation across words
-// ============================================================================
 static __forceinline__ __host__ __device__ 
 void bvShr1(bv_t* out, const bv_t* in) {
     uint64_t carry[BV_WORDS - 1];
@@ -155,10 +134,6 @@ void bvShr1(bv_t* out, const bv_t* in) {
     }
 }
 
-// ============================================================================
-// Tests if the bit at position (queryLength - 1) is set
-// Used to determine if edit distance increases or decreases
-// ============================================================================
 static __forceinline__ __host__ __device__ 
 int bvTestTop(const bv_t* v, int queryLength) {
     int idx = (queryLength - 1) / 64;
@@ -166,9 +141,6 @@ int bvTestTop(const bv_t* v, int queryLength) {
     return ((v->w[idx] >> bit) & 1ULL) ? 1 : 0;
 }
 
-// ============================================================================
-// Multi-precision addition: out = a + b, returns final carry
-// ============================================================================
 static __forceinline__ __host__ __device__ 
 uint64_t bvAdd(bv_t* out, const bv_t* a, const bv_t* b) {
     uint64_t carry = 0ULL;
@@ -185,10 +157,6 @@ uint64_t bvAdd(bv_t* out, const bv_t* a, const bv_t* b) {
     return carry;
 }
 
-// ============================================================================
-// Masks bits above position m-1 (clears bits >= m)
-// Used to ensure bit-vectors don't exceed query length
-// ============================================================================
 static __forceinline__ __host__ __device__ 
 void bvMaskTop(bv_t *v, int m) {
     if (m >= 64 * BV_WORDS) return;
@@ -204,6 +172,35 @@ void bvMaskTop(bv_t *v, int m) {
     for (int i = lastWord + 1; i < BV_WORDS; ++i) {
         v->w[i] = 0ULL;
     }
+}
+
+// ============================================================================
+// EQ TABLE CONSTRUCTION
+// Builds character equality lookup tables for pattern matching
+// ============================================================================
+
+static inline bv_t* buildEqTables(char** queries, int* queryLengths, int numQueries) {
+    bv_t* eqTables = (bv_t*)malloc((size_t)numQueries * 256 * sizeof(bv_t));
+    if (!eqTables) {
+        fprintf(stderr, "ERROR: Out of memory for Eq tables\n");
+        return NULL;
+    }
+    
+    memset(eqTables, 0, (size_t)numQueries * 256 * sizeof(bv_t));
+    
+    for (int q = 0; q < numQueries; ++q) {
+        int qlen = queryLengths[q];
+        const char* queryStr = queries[q];
+        
+        for (int i = 0; i < qlen; ++i) {
+            unsigned char ch = (unsigned char)queryStr[i];
+            int word = i / 64;
+            int bit = i % 64;
+            eqTables[(long long)q * 256 + ch].w[word] |= (1ULL << bit);
+        }
+    }
+    
+    return eqTables;
 }
 
 #endif // BITVECTOR_H

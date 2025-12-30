@@ -1,18 +1,55 @@
-// gpu_memory.h
-// GPU memory allocation and data transfer management
+// gpu_utils.h
+// GPU utilities: error checking, timing, and memory management
 
-#ifndef GPU_MEMORY_H
-#define GPU_MEMORY_H
+#ifndef HYRRO_GPU_H
+#define HYRRO_GPU_H
 
 #include <cuda_runtime.h>
-#include "cuda_utils.h"
-#include "bitvector.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include "config.h"
-#include "partition.h"
+#include "bitvector.h"
+#include "hyrro_partition.h"
+
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <sys/time.h>
+#endif
 
 // ============================================================================
-// GPU MEMORY BUFFERS STRUCTURE
-// Encapsulates all device pointers needed for GPU computation
+// CUDA ERROR CHECKING
+// ============================================================================
+#define CUDA_CHECK(call) \
+do { \
+    cudaError_t err = call; \
+    if (err != cudaSuccess) { \
+        fprintf(stderr, "CUDA error at %s:%d: %s\n", \
+                __FILE__, __LINE__, cudaGetErrorString(err)); \
+        exit(EXIT_FAILURE); \
+    } \
+} while (0)
+
+// ============================================================================
+// HIGH-PRECISION TIMING
+// ============================================================================
+static inline double getNowSeconds() {
+#ifdef _WIN32
+    LARGE_INTEGER frequency;
+    LARGE_INTEGER count;
+    QueryPerformanceFrequency(&frequency);
+    QueryPerformanceCounter(&count);
+    return (double)count.QuadPart / frequency.QuadPart;
+#else
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return tv.tv_sec + tv.tv_usec * 1e-6;
+#endif
+}
+
+// ============================================================================
+// GPU MEMORY BUFFERS
 // ============================================================================
 typedef struct {
     // Input data
@@ -41,7 +78,6 @@ typedef struct {
 
 // ============================================================================
 // ALLOCATE GPU MEMORY
-// Allocates all required device memory for the computation
 // ============================================================================
 static inline bool allocateGpuMemory(
     GpuBuffers* buffers,
@@ -80,7 +116,6 @@ static inline bool allocateGpuMemory(
 
 // ============================================================================
 // PACK SEQUENCES INTO CONTIGUOUS BUFFERS
-// Copies variable-length sequences into fixed-size slots for GPU access
 // ============================================================================
 static inline void packSequences(
     char** queries, int numQueries,
@@ -108,7 +143,6 @@ static inline void packSequences(
 
 // ============================================================================
 // TRANSFER DATA TO GPU
-// Copies all prepared host data to device memory
 // ============================================================================
 static inline void transferToGpu(
     GpuBuffers* buffers,
@@ -158,7 +192,6 @@ static inline void transferToGpu(
 
 // ============================================================================
 // FREE GPU MEMORY
-// Releases all allocated device memory
 // ============================================================================
 static inline void freeGpuMemory(GpuBuffers* buffers) {
     CUDA_CHECK(cudaFree(buffers->d_EqQueries));
@@ -178,4 +211,4 @@ static inline void freeGpuMemory(GpuBuffers* buffers) {
     CUDA_CHECK(cudaFree(buffers->d_lastScoreOrig));
 }
 
-#endif // GPU_MEMORY_H
+#endif // HYRRO_GPU_H

@@ -1,17 +1,82 @@
-// output_processor.h
-// Processing and printing of computation results
+// hyyro_cpu.h
+// CPU-side utilities: file I/O, result processing, and output formatting
 
-#ifndef OUTPUT_PROCESSOR_H
-#define OUTPUT_PROCESSOR_H
+#ifndef HYRRO_CPU_H
+#define HYRRO_CPU_H
 
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <limits.h>
 #include "config.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // ============================================================================
-// INTEGER COMPARISON FOR QSORT
-// Used for sorting hit indices and removing duplicates
+// FILE I/O - FASTA PARSING
 // ============================================================================
+
+#define MAX_LINE_LENGTH (1 << 14)
+
+char* read_file_into_string(const char* filename);
+char** parse_fasta_file(const char *filename, int *num_sequences);
+
+// ============================================================================
+// DATA LOADING - QUERIES AND REFERENCES
+// ============================================================================
+
+static inline char** loadQueries(int *numQueries) {
+    return parse_fasta_file(QUERY_FILE, numQueries);
+}
+
+static inline char** loadReferences(int *numRefs, int **refLens) {
+    int num = 0;
+    char **refs = parse_fasta_file(REFERENCE_FILE, &num);
+    if (!refs || num <= 0) {
+        *numRefs = 0;
+        *refLens = NULL;
+        return NULL;
+    }
+    
+    int *lens = (int*)malloc(sizeof(int) * num);
+    if (!lens) {
+        fprintf(stderr, "ERROR: Out of memory for reference lengths\n");
+        for (int i = 0; i < num; ++i) free(refs[i]);
+        free(refs);
+        *numRefs = 0;
+        *refLens = NULL;
+        return NULL;
+    }
+    
+    for (int i = 0; i < num; ++i) {
+        lens[i] = (int)strlen(refs[i]);
+    }
+    
+    *numRefs = num;
+    *refLens = lens;
+    return refs;
+}
+
+static inline int* computeQueryLengths(char** queries, int numQueries) {
+    int* lengths = (int*)malloc(numQueries * sizeof(int));
+    if (!lengths) {
+        fprintf(stderr, "ERROR: Out of memory for query lengths\n");
+        return NULL;
+    }
+    
+    for (int q = 0; q < numQueries; ++q) {
+        lengths[q] = (int)strlen(queries[q]);
+    }
+    
+    return lengths;
+}
+
+// ============================================================================
+// RESULT PROCESSING - SORTING AND DEDUPLICATION
+// ============================================================================
+
 static inline int compareInts(const void *a, const void *b) {
     int av = *(const int*)a;
     int bv = *(const int*)b;
@@ -20,10 +85,6 @@ static inline int compareInts(const void *a, const void *b) {
     return 0;
 }
 
-// ============================================================================
-// REMOVE DUPLICATE INDICES
-// Sorts array and removes consecutive duplicates, returns new count
-// ============================================================================
 static inline size_t removeDuplicates(int* arr, size_t count) {
     if (count == 0) return 0;
     
@@ -40,22 +101,9 @@ static inline size_t removeDuplicates(int* arr, size_t count) {
 }
 
 // ============================================================================
-// PRINT ARRAY OF INTEGERS
-// Formats and prints an array in bracket notation: [1,2,3]
+// RESULT COLLECTION - ZERO HITS AND LOWEST SCORES
 // ============================================================================
-static inline void printIntArray(const int* arr, size_t count) {
-    printf("[");
-    for (size_t i = 0; i < count; ++i) {
-        if (i > 0) printf(",");
-        printf("%d", arr[i]);
-    }
-    printf("]");
-}
 
-// ============================================================================
-// COLLECT ZERO-SCORE HITS FOR ORIGINAL REFERENCE
-// Aggregates all exact match positions across chunks belonging to one reference
-// ============================================================================
 static inline int* collectZeroHits(
     int q, int orig, int numChunks,
     int* origChunkCounts, int** origChunkLists,
@@ -91,10 +139,6 @@ static inline int* collectZeroHits(
     return hits;
 }
 
-// ============================================================================
-// COLLECT AND DEDUPLICATE LOWEST SCORE INDICES
-// Extracts valid indices and removes duplicates
-// ============================================================================
 static inline int* collectLowestIndices(
     int* rawIndices, int rawCount, size_t* outCount)
 {
@@ -121,9 +165,18 @@ static inline int* collectLowestIndices(
 }
 
 // ============================================================================
-// PRINT RESULTS FOR ONE QUERY-REFERENCE PAIR
-// Displays all computed metrics in a formatted block
+// OUTPUT FORMATTING
 // ============================================================================
+
+static inline void printIntArray(const int* arr, size_t count) {
+    printf("[");
+    for (size_t i = 0; i < count; ++i) {
+        if (i > 0) printf(",");
+        printf("%d", arr[i]);
+    }
+    printf("]");
+}
+
 static inline void printPairResults(
     int q, int orig,
     int queryLength, int refLength,
@@ -166,4 +219,8 @@ static inline void printPairResults(
     printf("----------------------------------------------------------------------------\n");
 }
 
-#endif // OUTPUT_PROCESSOR_H
+#ifdef __cplusplus
+}
+#endif
+
+#endif // HYYRO_CPU_H

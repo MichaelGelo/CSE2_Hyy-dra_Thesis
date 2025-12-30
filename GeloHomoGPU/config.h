@@ -1,11 +1,14 @@
-#ifndef CONFIG_H
-#define CONFIG_H
+// hyyro_config.h
+// Configuration constants and file paths for Hyyrö algorithm
+
+#ifndef HYRRO_CONFIG_H
+#define HYRRO_CONFIG_H
 
 // ============================================================================
 // FILE PATHS
 // ============================================================================
-#define QUERY_FILE     "C:/Users/gelod.MSI/OneDrive/Documents/Files/CSE2_Hyy-dra_Thesis/Resources/que1_256.fasta"
-#define REFERENCE_FILE "C:/Users/gelod.MSI/OneDrive/Documents/Files/CSE2_Hyy-dra_Thesis/Resources/ref_1M.fasta"
+#define QUERY_FILE     "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/que1_256.fasta"
+#define REFERENCE_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/ref_1M.fasta"
 
 // ============================================================================
 // MEMORY LIMITS
@@ -22,7 +25,7 @@
 // ============================================================================
 // PARTITIONING PARAMETERS
 // ============================================================================
-#define CHUNK_SIZE 166700            // Size of each reference chunk
+#define CHUNK_SIZE 50000            // Size of each reference chunk
 #define PARTITION_THRESHOLD 100000  // Minimum reference length to trigger partitioning
 
 // ============================================================================
@@ -30,4 +33,4 @@
 // ============================================================================
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
 
-#endif // CONFIG_H
+#endif // HYYRO_CONFIG_H

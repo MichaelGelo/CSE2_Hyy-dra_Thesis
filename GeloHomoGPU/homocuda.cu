@@ -1,20 +1,18 @@
-// main.cu
+// homocuda.cu
 // Main entry point for Hyyrö bit-vector Levenshtein distance computation
-// Compile: nvcc -O3 main.cu C_utils.c -o levenshtein_gpu
+// Compile: nvcc -O3 homocuda.cu -o levenshtein_gpu
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "config.h"
-#include "cuda_utils.h"
+#include "hyrro_partition.h"
 #include "bitvector.h"
-#include "data_loader.h"
-#include "eq_table.h"
-#include "gpu_memory.h"
-#include "output_processor.h"
+#include "cpu_utils.h"
+#include "hyrro_io.h"
+#include "gpu_utils.h"
 #include "levenshtein_kernel.cuh"
-#include "partition.h"
 
 // ============================================================================
 // RUN HYYRÖ ALGORITHM ON GPU
@@ -124,7 +122,6 @@ void runHyyroAlgorithm(
     }
 
     double avgTime = (total_ms / LOOP_ITERATIONS) / 1000.0; // seconds
-    //printf("\n%d loop Average device-only time: %.6f sec.\n",LOOP_ITERATIONS, avgTime);
 
     cudaEventDestroy(ev_start);
     cudaEventDestroy(ev_end);
@@ -262,10 +259,6 @@ int main() {
     int** origChunkLists;
     build_orig_to_chunk_mapping(&partRefs, numOrigRefs,
                                 &origChunkCounts, &origChunkLists);
-
-    //printf("\n==================== LOADING ALGORITHM ====================\n");
-    //printf("Loading Algorithm Active (GPU-only mode)\n");
-    //printf("Total Mapped Chunks: %d\n", partRefs.num_chunks);
 
     // Run algorithm
     runHyyroAlgorithm(numQueries, partRefs.num_chunks, numOrigRefs,

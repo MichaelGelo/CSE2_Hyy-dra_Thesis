@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <limits.h>
 #include <string.h>
-#include "C_utils.h"
+#include "cpu_utils.h"
 #include <sys/time.h>
 
 #define QUERY_FILE     "C:/Users/gelod.MSI/OneDrive/Documents/Files/CSE2_Hyy-dra_Thesis/Resources/que1_256.fasta"

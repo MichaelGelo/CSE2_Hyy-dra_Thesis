@@ -1,5 +1,8 @@
-#ifndef PARTITION_UTILS_H
-#define PARTITION_UTILS_H
+// hyrro_partition.h
+// Reference sequence partitioning with overlap support
+
+#ifndef HYRRO_PARTITION_H
+#define HYRRO_PARTITION_H
 
 #include <stdlib.h>
 #include <string.h>
@@ -8,26 +11,22 @@
 extern "C" {
 #endif
 
-// Structure to hold partitioned reference data
+// ============================================================================
+// PARTITIONED REFERENCES STRUCTURE
+// Holds all data for reference sequences split into overlapping chunks
+// ============================================================================
 typedef struct {
-    char** chunk_seqs;           // Array of chunk sequences
-    int* chunk_lens;             // Length of each chunk
-    int* chunk_starts;           // Start position in original reference
-    int* chunk_to_orig;          // Maps chunk index to original reference index
-    int num_chunks;              // Total number of chunks
+    char** chunk_seqs;      // Array of chunk sequences
+    int* chunk_lens;        // Length of each chunk
+    int* chunk_starts;      // Start position in original reference
+    int* chunk_to_orig;     // Maps chunk index to original reference index
+    int num_chunks;         // Total number of chunks
 } PartitionedRefs;
 
-/**
- * Partition references into overlapping chunks
- *
- * @param orig_refs Array of original reference sequences
- * @param orig_ref_lens Array of original reference lengths
- * @param num_orig_refs Number of original references
- * @param overlap Overlap size between chunks (typically query_length - 1)
- * @param chunk_size Size of each chunk
- * @param partition_threshold References longer than this will be partitioned
- * @return PartitionedRefs structure containing all chunk data
- */
+// ============================================================================
+// PARTITION REFERENCES INTO OVERLAPPING CHUNKS
+// Splits long references into smaller chunks with overlap for boundary handling
+// ============================================================================
 static inline PartitionedRefs partition_references(
     char** orig_refs,
     int* orig_ref_lens,
@@ -103,9 +102,10 @@ static inline PartitionedRefs partition_references(
     return result;
 }
 
-/**
- * Free memory allocated for partitioned references
- */
+// ============================================================================
+// FREE PARTITIONED REFERENCES
+// Releases all memory allocated for partitioned reference data
+// ============================================================================
 static inline void free_partitioned_refs(PartitionedRefs* part_refs) {
     if (part_refs->chunk_seqs) {
         for (int i = 0; i < part_refs->num_chunks; ++i) {
@@ -118,14 +118,10 @@ static inline void free_partitioned_refs(PartitionedRefs* part_refs) {
     if (part_refs->chunk_to_orig) free(part_refs->chunk_to_orig);
 }
 
-/**
- * Build mapping of original references to their chunks
- *
- * @param part_refs Partitioned reference structure
- * @param num_orig_refs Number of original references
- * @param out_counts Output array of chunk counts per original ref
- * @param out_lists Output array of chunk lists per original ref
- */
+// ============================================================================
+// BUILD MAPPING OF ORIGINAL REFERENCES TO THEIR CHUNKS
+// Creates reverse lookup: for each original reference, lists all its chunks
+// ============================================================================
 static inline void build_orig_to_chunk_mapping(
     const PartitionedRefs* part_refs,
     int num_orig_refs,
@@ -161,9 +157,10 @@ static inline void build_orig_to_chunk_mapping(
     *out_lists = orig_chunk_lists;
 }
 
-/**
- * Free orig-to-chunk mapping
- */
+// ============================================================================
+// FREE CHUNK MAPPING
+// Releases memory allocated for original-to-chunk mapping
+// ============================================================================
 static inline void free_orig_to_chunk_mapping(int* counts, int** lists, int num_orig_refs) {
     if (counts) free(counts);
     if (lists) {
@@ -178,4 +175,4 @@ static inline void free_orig_to_chunk_mapping(int* counts, int** lists, int num_
 }
 #endif
 
-#endif // PARTITION_UTILS_H
+#endif // HYYRO_PARTITION_H
