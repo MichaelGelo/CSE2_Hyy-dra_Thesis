@@ -6,7 +6,37 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <cuda_runtime.h>
 
+// Compute optimal chunk size and partition threshold dynamically
+// Inputs:
+//   query_length: length of the query sequence
+//   reference_length: length of the reference sequence
+//   num_queries: number of queries
+//   min_parallel_blocks: minimum number of partitions (e.g., 10x number of SMs)
+//   max_gpu_mem_bytes: available GPU memory in bytes
+// Outputs:
+//   chunk_size: pointer to int, will be set
+//   partition_threshold: pointer to int, will be set
+static inline void compute_partitioning_params(
+    int query_length,
+    int reference_length,
+    int num_queries,
+    int min_parallel_blocks,
+    size_t max_gpu_mem_bytes,
+    int* chunk_size,
+    int* partition_threshold)
+{
+    // Estimate memory per chunk (conservative, adjust as needed)
+    size_t mem_per_chunk = (query_length + reference_length) * sizeof(char) + 4096; // overhead
+    int max_chunks = (int)(max_gpu_mem_bytes / (mem_per_chunk * num_queries));
+    if (max_chunks < min_parallel_blocks) max_chunks = min_parallel_blocks;
+    if (max_chunks > reference_length / query_length) max_chunks = reference_length / query_length;
+    if (max_chunks < 1) max_chunks = 1;
+
+    *chunk_size = (reference_length + max_chunks - 1) / max_chunks;
+    *partition_threshold = *chunk_size; // partition if ref > chunk_size
+}
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -170,9 +200,6 @@ static inline void free_orig_to_chunk_mapping(int* counts, int** lists, int num_
         free(lists);
     }
 }
-
-#ifdef __cplusplus
 }
-#endif
 
 #endif // HYYRO_PARTITION_H

@@ -1,4 +1,4 @@
-// hyyro_cpu.h
+// cpu_utils.h
 // CPU-side utilities: file I/O, result processing, and output formatting
 
 #ifndef HYRRO_CPU_H

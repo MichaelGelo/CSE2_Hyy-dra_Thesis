@@ -1,5 +1,6 @@
 // homocuda.cu
 // Main entry point for Hyyrö bit-vector Levenshtein distance computation
+// WITH DYNAMIC PARTITIONING based on workload
 // Compile: nvcc -O3 homocuda.cu -o levenshtein_gpu
 
 #include <stdio.h>
@@ -16,12 +17,6 @@
 
 // ============================================================================
 // RUN HYYRÖ ALGORITHM ON GPU
-// Main orchestration function that:
-// 1. Builds Eq tables
-// 2. Packs sequences for GPU
-// 3. Allocates and transfers data to GPU
-// 4. Launches kernel and times execution
-// 5. Retrieves and processes results
 // ============================================================================
 void runHyyroAlgorithm(
     int numQueries, int numChunks, int numOrigRefs,
@@ -39,35 +34,31 @@ void runHyyroAlgorithm(
         return;
     }
 
-    // Pack sequences into contiguous buffers
-    size_t queriesBytes = (size_t)numQueries * MAX_LENGTH * sizeof(char);
-    size_t refsBytes = (size_t)numChunks * MAX_LENGTH * sizeof(char);
+    // Pack sequences EFFICIENTLY (no padding waste)
+    char* hostQueries = NULL;
+    char* hostRefs = NULL;
+    int* hostRefOffsets = NULL;
+    size_t totalRefBytes = 0;
     
-    char* hostQueries = (char*)malloc(queriesBytes);
-    char* hostRefs = (char*)malloc(refsBytes);
+    packSequencesEfficient(querySeqs, numQueries, 
+                          partRefs->chunk_seqs, partRefs->chunk_lens, numChunks,
+                          &hostQueries, &hostRefs, &hostRefOffsets, &totalRefBytes);
     
-    if (!hostQueries || !hostRefs) {
+    if (!hostQueries || !hostRefs || !hostRefOffsets) {
         fprintf(stderr, "ERROR: Out of memory for host buffers\n");
         free(hostEqTables);
         return;
     }
-    
-    packSequences(querySeqs, numQueries, partRefs->chunk_seqs, numChunks,
-                  &hostQueries, &hostRefs);
 
-    int* hostRefLens = (int*)malloc(numChunks * sizeof(int));
-    for (int r = 0; r < numChunks; ++r) {
-        hostRefLens[r] = partRefs->chunk_lens[r];
-    }
-
-    // Allocate GPU memory
+    // Allocate GPU memory with ACTUAL sizes
     GpuBuffers gpuBuffers;
-    allocateGpuMemory(&gpuBuffers, numQueries, numChunks, numOrigRefs);
+    allocateGpuMemory(&gpuBuffers, numQueries, numChunks, numOrigRefs, totalRefBytes);
 
     // Transfer data to GPU
-    transferToGpu(&gpuBuffers, hostEqTables, hostQueries, hostRefs,
-                  queryLengths, hostRefLens, partRefs, origRefLens,
-                  numQueries, numChunks, numOrigRefs);
+    transferToGpuEfficient(&gpuBuffers, hostEqTables, hostQueries, hostRefs,
+                          queryLengths, partRefs->chunk_lens, hostRefOffsets,
+                          partRefs, origRefLens,
+                          numQueries, numChunks, numOrigRefs, totalRefBytes);
 
     // Launch optimized kernel: one block per query-chunk pair
     int totalPairs = numQueries * numChunks;
@@ -89,37 +80,39 @@ void runHyyroAlgorithm(
 
     for (int it = 0; it < LOOP_ITERATIONS; ++it) {
 
-        // Start event
-        CUDA_CHECK(cudaEventRecord(ev_start, 0));
-        // Phase 1: Compute distances and find minimum scores
+        // Start timing Hyyrö only
+        CUDA_CHECK(cudaEventRecord(ev_start));
+
         levenshteinKernelOptimized<<<blocks, threads, sharedBytes>>>(
             numQueries, numChunks, numOrigRefs,
             gpuBuffers.d_queries, gpuBuffers.d_qLens, gpuBuffers.d_EqQueries,
-            gpuBuffers.d_refs, gpuBuffers.d_refLens,
+            gpuBuffers.d_refs, gpuBuffers.d_refLens, gpuBuffers.d_refOffsets,
             gpuBuffers.d_chunkStarts, gpuBuffers.d_chunkToOrig,
             gpuBuffers.d_origRefLens,
             gpuBuffers.d_pairDistances, gpuBuffers.d_pairZcounts,
             gpuBuffers.d_pairZindices,
             gpuBuffers.d_lowestScoreOrig, gpuBuffers.d_lowestCountOrig,
-            gpuBuffers.d_lowestIndicesOrig, gpuBuffers.d_lastScoreOrig);
-        CUDA_CHECK(cudaEventRecord(ev_end, 0));
+            gpuBuffers.d_lowestIndicesOrig, gpuBuffers.d_lastScoreOrig
+        );
+
+        CUDA_CHECK(cudaEventRecord(ev_end));
         CUDA_CHECK(cudaEventSynchronize(ev_end));
-        
+
         float iter_ms = 0.0f;
         CUDA_CHECK(cudaEventElapsedTime(&iter_ms, ev_start, ev_end));
         total_ms += iter_ms;
-        CUDA_CHECK(cudaDeviceSynchronize());
-        // Phase 2: Collect indices matching best scores
-        collectLowestIndicesKernel<<<blocks, threads, sharedBytes>>>(
-            numQueries, numChunks, numOrigRefs,
-            gpuBuffers.d_queries, gpuBuffers.d_qLens, gpuBuffers.d_EqQueries,
-            gpuBuffers.d_refs, gpuBuffers.d_refLens,
-            gpuBuffers.d_chunkStarts, gpuBuffers.d_chunkToOrig,
-            gpuBuffers.d_lowestScoreOrig, gpuBuffers.d_lowestCountOrig,
-            gpuBuffers.d_lowestIndicesOrig);
-        
-        CUDA_CHECK(cudaGetLastError());
     }
+
+    // Run collect kernel outside timing
+    collectLowestIndicesKernel<<<blocks, threads, sharedBytes>>>(
+        numQueries, numChunks, numOrigRefs,
+        gpuBuffers.d_queries, gpuBuffers.d_qLens, gpuBuffers.d_EqQueries,
+        gpuBuffers.d_refs, gpuBuffers.d_refLens, gpuBuffers.d_refOffsets,
+        gpuBuffers.d_chunkStarts, gpuBuffers.d_chunkToOrig,
+        gpuBuffers.d_lowestScoreOrig, gpuBuffers.d_lowestCountOrig,
+        gpuBuffers.d_lowestIndicesOrig
+    );
+
 
     double avgTime = (total_ms / LOOP_ITERATIONS) / 1000.0; // seconds
 
@@ -198,7 +191,7 @@ void runHyyroAlgorithm(
     free(hostEqTables);
     free(hostQueries);
     free(hostRefs);
-    free(hostRefLens);
+    free(hostRefOffsets);
     free(hostPairDistances);
     free(hostPairZcounts);
     free(hostPairZindices);
@@ -210,10 +203,9 @@ void runHyyroAlgorithm(
 
 // ============================================================================
 // MAIN ENTRY POINT
-// Loads data, partitions references, and runs the algorithm
 // ============================================================================
 int main() {
-    printf("=== Hyyrö Bit-Vector Levenshtein with Partitioning (GPU-only) ===\n");
+    printf("=== Hyyrö Bit-Vector Levenshtein with DYNAMIC Partitioning (GPU-only) ===\n");
 
     // Load queries
     int numQueries = 0;
@@ -236,20 +228,29 @@ int main() {
     printf("Queries Loaded: %d\n", numQueries);
     printf("Original References Loaded: %d\n", numOrigRefs);
 
-    // Partition references
+    // ========================================================================
+    // DYNAMIC PARTITIONING: Compute optimal parameters based on workload
+    // ========================================================================
+    int chunk_size, partition_threshold;
+    
+    printf("\n==================== DYNAMIC PARTITIONING ====================\n");
+    compute_partitioning_strategy(
+        numQueries, numOrigRefs, origRefLens,
+        &chunk_size, &partition_threshold);
+
+    // Partition references with computed parameters
     int queryLength0 = (int)strlen(querySeqs[0]);
     int overlap = queryLength0 - 1;
 
     PartitionedRefs partRefs = partition_references(
         origRefs, origRefLens, numOrigRefs,
-        overlap, CHUNK_SIZE, PARTITION_THRESHOLD);
+        overlap, chunk_size, partition_threshold);
 
-    printf("\n==================== PARTITIONING ====================\n");
-    printf("Reference Partitioning Enabled\n");
-    printf("Chunk Size: %d\n", CHUNK_SIZE);
+    printf("\n==================== PARTITIONING RESULTS ====================\n");
     printf("Overlap (Q-1): %d\n", overlap);
-    printf("Partition Threshold: %d\n", PARTITION_THRESHOLD);
     printf("Generated Chunks: %d\n", partRefs.num_chunks);
+    printf("Actual GPU blocks: %d queries × %d chunks = %d\n",
+           numQueries, partRefs.num_chunks, numQueries * partRefs.num_chunks);
 
     // Compute query lengths
     int* queryLengths = computeQueryLengths(querySeqs, numQueries);
