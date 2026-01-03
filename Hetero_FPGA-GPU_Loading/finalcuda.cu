@@ -1,10 +1,5 @@
-// unified_leven_partitioned_gpu.cu
-// Hyyrö bit-vector Levenshtein with GPU-side aggregation using partition_utils.h
-// Compile:
-//   nvcc -O3 unified_leven_partitioned_gpu.cu C_utils.c -o unified_leven_partitioned_gpu
-//
-// Run:
-//   ./unified_leven_partitioned_gpu
+// finalcuda.cu
+
 
 #include <stdio.h>
 #include <stdlib.h>

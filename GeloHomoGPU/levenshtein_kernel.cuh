@@ -1,5 +1,6 @@
 // levenshtein_kernel.cuh
-// CUDA kernel with EFFICIENT memory access using offsets
+// CUDA kernel with CORRECT Hyyro-Damerau implementation
+// FIXED: Last score now correctly tracks only the true final position
 
 #ifndef LEVENSHTEIN_KERNEL_CUH
 #define LEVENSHTEIN_KERNEL_CUH
@@ -9,7 +10,10 @@
 #include "bitvector.h"
 #include "config.h"
 
-// [Keep bitVectorDamerau function unchanged - same as document 6]
+// ============================================================================
+// CORRECTED bitVectorDamerau - Matches pseudocode exactly
+// Returns: final score, and also outputs the score at a specific position
+// ============================================================================
 static __forceinline__ __host__ __device__ 
 int bitVectorDamerau(
     int queryLength,
@@ -20,52 +24,96 @@ int bitVectorDamerau(
     int* zeroCount,
     int* lowestScore,
     int* lowestIndices,
-    int* lowestCount)
+    int* lowestCount,
+    int targetPos,           // NEW: specific position to track score
+    int* scoreAtTarget)      // NEW: output score at targetPos
 {
     if (queryLength > 64 * BV_WORDS || queryLength <= 0) return -1;
 
+    // Line 2: Bit-vector Pv, Mv, Ph, Mh, Xv, Xh, Eq, Xp
     bv_t Pv, Mv, Xv, Xh, Ph, Mh, Xp;
-    bv_t tmp, tmp2, addtmp, Xh_or_Pv, not_Xh_or_Pv, Xh_or_Xv, not_Xh_or_Xv;
-    bv_t Mh_shl, Ph_shl, not_Xh, Xv_and_Pv;
+    
+    // Temporary variables for operations
+    bv_t tmp, tmp2, addtmp;
+    bv_t Xh_or_Pv, not_Xh_or_Pv;
+    bv_t Xh_or_Xv, not_Xh_or_Xv;
+    bv_t Mh_shl, not_Xh, Xv_and_Pv;
 
+    // Line 3: Score = m
+    int score = queryLength;
+    
+    // Line 4: Pv = 1^m
     bvSetAll(&Pv, ~0ULL);
+    bvMaskTop(&Pv, queryLength);
+    
+    // Line 5: Mv = 0^m
     bvClear(&Mv);
+    
+    // Initialize Xp and Xh
     bvClear(&Xp);
     bvClear(&Xh);
-    bvMaskTop(&Pv, queryLength);
 
     *zeroCount = 0;
     *lowestCount = 0;
-    int score = queryLength;
     *lowestScore = score;
+    if (scoreAtTarget) *scoreAtTarget = -1;
 
+    // Line 6: for j = 1, 2, ..., n do
     for (int j = 0; j < referenceLength; ++j) {
         unsigned char c = (unsigned char)reference[j];
+        
+        // Line 7: Eq = PEq[Σ[T[j]]]
         const bv_t* Eqc = &Eq[c];
 
+        // Line 8: Xv = Eq | Mv
         bvOr(&Xv, Eqc, &Mv);
-        bvNot(&not_Xh, &Xh);
-        bvAnd(&tmp, &not_Xh, &Xv);
-        bvShl1(&tmp2, &tmp);
-        bvAnd(&Xh, &tmp2, &Xp);
-        bvAnd(&Xv_and_Pv, &Xv, &Pv);
-        bvAdd(&addtmp, &Xv_and_Pv, &Pv);
-        bvXor(&tmp, &addtmp, &Pv);
-        bvOr(&Xh, &Xh, &tmp);
-        bvOr(&Xh, &Xh, &Xv);
-        bvOr(&Xh, &Xh, &Mv);
+        
+        // Line 9: Xh = (((~Xh) & Xv) << 1) & Xp
+        bvNot(&not_Xh, &Xh);           // ~Xh
+        bvAnd(&tmp, &not_Xh, &Xv);     // (~Xh) & Xv
+        bvShl1(&tmp2, &tmp);           // ((~Xh) & Xv) << 1
+        bvAnd(&Xh, &tmp2, &Xp);        // (((~Xh) & Xv) << 1) & Xp
+        
+        // Line 10: Xh = Xh | (((Xv & Pv) + Pv) ^ Pv) | Xv | Mv
+        bvAnd(&Xv_and_Pv, &Xv, &Pv);  // (Xv & Pv)
+        bvAdd(&addtmp, &Xv_and_Pv, &Pv); // (Xv & Pv) + Pv
+        bvXor(&tmp, &addtmp, &Pv);     // ((Xv & Pv) + Pv) ^ Pv
+        bvOr(&Xh, &Xh, &tmp);          // Xh | (...)
+        bvOr(&Xh, &Xh, &Xv);           // ... | Xv
+        bvOr(&Xh, &Xh, &Mv);           // ... | Mv
+        
+        // Line 11: Ph = Mv | ~(Xh | Pv)
         bvOr(&Xh_or_Pv, &Xh, &Pv);
         bvNot(&not_Xh_or_Pv, &Xh_or_Pv);
         bvOr(&Ph, &Mv, &not_Xh_or_Pv);
+        
+        // Line 12: Mh = Xh & Pv
         bvAnd(&Mh, &Xh, &Pv);
+        
+        // Line 13: Xp = Xv
         bvCopy(&Xp, &Xv);
 
+        // Line 14-15: Update score
         if (bvTestTop(&Ph, queryLength)) {
-            ++score;
+            ++score;  // Line 14: if(Ph & 10m-1) then score += 1
         } else if (bvTestTop(&Mh, queryLength)) {
-            --score;
+            --score;  // Line 15: else if(Mh & 10m-1) then score -= 1
         }
 
+        // Track score at specific position (for last score tracking)
+        if (scoreAtTarget && j == targetPos) {
+            *scoreAtTarget = score;
+        }
+
+        // Track zero hits
+        if (score == 0) {
+            if (*zeroCount < MAX_HITS) {
+                zeroIndices[*zeroCount] = j;
+                (*zeroCount)++;
+            }
+        }
+
+        // Track lowest score
         if (score < *lowestScore) {
             *lowestScore = score;
             *lowestCount = 0;
@@ -77,21 +125,22 @@ int bitVectorDamerau(
             }
         }
 
+        // Line 16: Xv = (Ph << 1)
         bvShl1(&Xv, &Ph);
-        bvShl1(&Mh_shl, &Mh);
-        bvOr(&Xh_or_Xv, &Xh, &Xv);
-        bvNot(&not_Xh_or_Xv, &Xh_or_Xv);
-        bvOr(&Pv, &Mh_shl, &not_Xh_or_Xv);
-        bvAnd(&Mv, &Xh, &Xv);
+        
+        // Line 17: Pv = (Mh << 1) | ~(Xh | Xv)
+        // CRITICAL: Use the NEW Xv from line 16, not the old one!
+        bvShl1(&Mh_shl, &Mh);          // Mh << 1
+        bvOr(&Xh_or_Xv, &Xh, &Xv);     // Xh | Xv (using NEW Xv)
+        bvNot(&not_Xh_or_Xv, &Xh_or_Xv); // ~(Xh | Xv)
+        bvOr(&Pv, &Mh_shl, &not_Xh_or_Xv); // (Mh << 1) | ~(Xh | Xv)
+        
+        // Line 18: Mv = Xh & Xv
+        bvAnd(&Mv, &Xh, &Xv);          // Use NEW Xv here too
+        
+        // Mask to pattern length
         bvMaskTop(&Pv, queryLength);
         bvMaskTop(&Mv, queryLength);
-
-        if (score == 0) {
-            if (*zeroCount < MAX_HITS) {
-                zeroIndices[*zeroCount] = j;
-                (*zeroCount)++;
-            }
-        }
     }
 
     return score;
@@ -99,6 +148,7 @@ int bitVectorDamerau(
 
 // ============================================================================
 // OPTIMIZED KERNEL WITH OFFSET-BASED MEMORY ACCESS
+// FIXED: Only records last score when chunk actually ends at reference end
 // ============================================================================
 __global__ 
 void levenshteinKernelOptimized(
@@ -108,7 +158,7 @@ void levenshteinKernelOptimized(
     const bv_t* __restrict__ d_EqQueries,
     const char* __restrict__ d_refs,
     const int* __restrict__ d_refLens,
-    const int* __restrict__ d_refOffsets,  // NEW: Offsets into d_refs
+    const int* __restrict__ d_refOffsets,
     const int* __restrict__ d_chunkStarts,
     const int* __restrict__ d_chunkToOrig,
     const int* __restrict__ d_origRefLens,
@@ -140,11 +190,12 @@ void levenshteinKernelOptimized(
     int queryLength = d_qLens[q];
     
     if (tid == 0) {
-        // USE OFFSET to access contiguous reference data
+        // Use offset to access contiguous reference data
         const char* refptr = &d_refs[d_refOffsets[c]];
         int rlen = d_refLens[c];
         int chunkStart = d_chunkStarts[c];
         int orig = d_chunkToOrig[c];
+        int origRefLen = d_origRefLens[orig];
         long long pairIdx = (long long)q * numChunks + c;
 
         int localZeroIndices[MAX_HITS];
@@ -153,10 +204,22 @@ void levenshteinKernelOptimized(
         int localLowestIndices[MAX_HITS];
         int localLowestCount = 0;
 
+        // Calculate if this chunk contains the true final position
+        int chunkEnd = chunkStart + rlen;
+        int targetPos = -1;
+        int scoreAtTarget = -1;
+        
+        // Only track score at target if this chunk contains the actual end
+        if (chunkEnd >= origRefLen) {
+            // This chunk contains the final position
+            targetPos = origRefLen - chunkStart - 1;  // Convert to local chunk coordinate
+        }
+
         int dist = bitVectorDamerau(
             queryLength, refptr, rlen, sharedEq,
             localZeroIndices, &localZeroCount, 
-            &localLowestScore, localLowestIndices, &localLowestCount);
+            &localLowestScore, localLowestIndices, &localLowestCount,
+            targetPos, &scoreAtTarget);
 
         d_pairDistances[pairIdx] = dist;
         d_pairZcounts[pairIdx] = localZeroCount;
@@ -174,8 +237,9 @@ void levenshteinKernelOptimized(
             atomicMin(&d_lowestScoreOrig[origPairIdx], localLowestScore);
         }
 
-        if (chunkStart + rlen == d_origRefLens[orig]) {
-            d_lastScoreOrig[origPairIdx] = dist;
+        // FIXED: Only record last score if we actually processed the final position
+        if (scoreAtTarget >= 0) {
+            d_lastScoreOrig[origPairIdx] = scoreAtTarget;
         }
     }
     __syncthreads();
@@ -192,7 +256,7 @@ void collectLowestIndicesKernel(
     const bv_t* __restrict__ d_EqQueries,
     const char* __restrict__ d_refs,
     const int* __restrict__ d_refLens,
-    const int* __restrict__ d_refOffsets,  // NEW
+    const int* __restrict__ d_refOffsets,
     const int* __restrict__ d_chunkStarts,
     const int* __restrict__ d_chunkToOrig,
     const int* __restrict__ d_lowestScoreOrig,
@@ -231,7 +295,8 @@ void collectLowestIndicesKernel(
         bitVectorDamerau(
             queryLength, refptr, rlen, sharedEq,
             localZeroIndices, &localZeroCount, 
-            &localLowestScore, localLowestIndices, &localLowestCount);
+            &localLowestScore, localLowestIndices, &localLowestCount,
+            -1, NULL);  // Don't track specific position in this pass
 
         long long origPairIdx = (long long)q * numOrigRefs + orig;
         long long origIndicesBase = origPairIdx * MAX_HITS;
