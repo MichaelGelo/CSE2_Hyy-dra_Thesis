@@ -6,8 +6,8 @@
 #include "hyrro_io.h"
 #include <sys/time.h>
 
-#define QUERY_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/mque_2_256.fasta"
-#define REFERENCE_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/mref_8_50M.fasta"
+#define QUERY_FILE "que1_256.fasta"
+#define REFERENCE_FILE "Stiff Brome.fasta"
 #define LOOP_COUNT 1
 
 typedef uint64_t u64;
@@ -46,10 +46,15 @@ int bit_vector_damerau(const char* query,const char* ref,int* scores,
     BV Pv, Mv, Ph, Mh, Xv, Xh, Xp;
     BV tmp, tmp2, addtmp, Xh_or_Pv, not_Xh_or_Pv;
     
+    // Pre-compute mask once (OPTIMIZATION: avoid recomputing in loop)
+    BV queryMask;
+    bv_set_all(&queryMask);
+    bv_mask_top(&queryMask, m);
+    
     bv_set_all(&Pv);  // Pv = 1^m
+    bv_and(&Pv, &queryMask, &Pv);  // Apply mask once
     bv_zero(&Mv);     // Mv = 0^m
     bv_zero(&Xp);     // Xp starts at 0
-    bv_mask_top(&Pv,m);
     
     int score=m;  // Score = m
     *hit_count=0; *low_count=0; *lowest_score=m;
@@ -122,9 +127,9 @@ int bit_vector_damerau(const char* query,const char* ref,int* scores,
         // Line 18: Mv = Xh & Xv
         bv_and(&Xh, &Xv, &Mv);
         
-        // Mask to pattern length
-        bv_mask_top(&Pv, m);
-        bv_mask_top(&Mv, m);
+        // Mask to pattern length (use pre-computed mask)
+        bv_and(&Pv, &queryMask, &Pv);
+        bv_and(&Mv, &queryMask, &Mv);
     }
     
     return score;
