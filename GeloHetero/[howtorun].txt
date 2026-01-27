@@ -1,0 +1,34 @@
+run checker
+cd "d:\download\College Life\Thesis\CSE2_Hyy-dra_Thesis\Final_GPU\" && gcc checker.c C_utils.c -o checker && "d:\download\College Life\Thesis\CSE2_Hyy-dra_Thesis\Final_GPU\"checker
+
+gcc [HyDam_checker].c -o HyDam_checker &&./HyDam_checker
+
+
+
+nvcc -O3 -diag-suppress=177 -arch=sm_75 finalcuda.cu -o finalcuda && ./finalcuda
+
+
+
+./finalcuda
+./checker
+./hycuda2
+
+
+cd "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Final_GPU" && gcc checker.c C_utils.c -o checker && "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Final_GPU/"checker
+
+
+run fpga only
+
+rsync -avz -e "ssh -i ~/.ssh/id_rsa_fpga -o StrictHostKeyChecking=no" \
+    /home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/Testing/platypusexact.fasta \
+    xilinx@192.168.2.99:/home/xilinx/jupyter_notebooks/updatedbit/
+
+rsync -avz -e "ssh -i ~/.ssh/id_rsa_fpga -o StrictHostKeyChecking=no" \
+    /home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/Testing/Platypus.fasta \
+    xilinx@192.168.2.99:/home/xilinx/jupyter_notebooks/updatedbit/
+
+
+ssh -i ~/.ssh/id_rsa_fpga -o StrictHostKeyChecking=no xilinx@192.168.2.99 \
+    "sudo python3 /home/xilinx/jupyter_notebooks/updatedbit/fpga_code.py \
+    /home/xilinx/jupyter_notebooks/updatedbit/Platypus.fasta \
+    /home/xilinx/jupyter_notebooks/updatedbit/platypusexact.fasta"
