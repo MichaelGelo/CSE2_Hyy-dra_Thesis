@@ -5,7 +5,7 @@ gcc [HyDam_checker].c -o HyDam_checker &&./HyDam_checker
 
 
 
-nvcc -O3 -diag-suppress=177 -arch=sm_75 finalcuda.cu cpu_utils.c -o finalcuda && ./finalcuda
+nvcc -O3 -diag-suppress=177 -arch=sm_75 finalcuda.cu -o finalcuda && ./finalcuda
 
 
 

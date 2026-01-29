@@ -141,10 +141,10 @@ int bvTestTop(const bv_t* v, int queryLength) {
     return ((v->w[idx] >> bit) & 1ULL) ? 1 : 0;
 }
 
-static __forceinline__ __host__ __device__
+static __forceinline__ __host__ __device__ 
 uint64_t bvAdd(bv_t* out, const bv_t* a, const bv_t* b) {
     uint64_t carry = 0ULL;
-
+    
     #ifdef __CUDA_ARCH__
     #pragma unroll
     #endif
@@ -153,7 +153,7 @@ uint64_t bvAdd(bv_t* out, const bv_t* a, const bv_t* b) {
         carry = (sum < a->w[i]) || (sum == a->w[i] && carry);
         out->w[i] = sum;
     }
-
+    
     return carry;
 }
 
@@ -201,33 +201,6 @@ static inline bv_t* buildEqTables(char** queries, int* queryLengths, int numQuer
     }
     
     return eqTables;
-}
-
-// Create a static mask where valid bits are 1 and invalid bits are 0
-static __forceinline__ __host__ __device__
-void bvCreateMask(bv_t* out, int m) {
-    bvClear(out);
-    if (m <= 0) return;
-
-    int lastWord = (m - 1) / 64;
-    int lastBit = (m - 1) % 64;
-
-    // Set all full words to 1s
-    for (int i = 0; i < lastWord; ++i) {
-        out->w[i] = ~0ULL;
-    }
-
-    // Set the partial word
-    uint64_t lastMask = (lastBit == 63) ? ~0ULL : ((1ULL << (lastBit + 1)) - 1ULL);
-    out->w[lastWord] = lastMask;
-
-    // Remaining words are already 0 from bvClear
-}
-
-// Fast check using pre-computed index and mask
-static __forceinline__ __host__ __device__
-int bvTestBitFast(const bv_t* v, int wordIdx, uint64_t bitMask) {
-    return (v->w[wordIdx] & bitMask) ? 1 : 0;
 }
 
 #endif // BITVECTOR_H

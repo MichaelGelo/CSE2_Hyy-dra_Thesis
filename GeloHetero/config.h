@@ -61,8 +61,8 @@
 // ADAPTIVE SCHEDULING PARAMETERS
 // Controls GPU/FPGA workload distribution
 // ============================================================================
-#define GPU_SPEED_RATIO  0.05f           // Initial GPU workload ratio (0.0-1.0) - TESTING FPGA ONLY
-#define FPGA_SPEED_RATIO 0.95f           // Initial FPGA workload ratio (0.0-1.0) - TESTING FPGA ONLY
+#define GPU_SPEED_RATIO  0.5f           // Initial GPU workload ratio (0.0-1.0)
+#define FPGA_SPEED_RATIO 0.5f           // Initial FPGA workload ratio (0.0-1.0)
 
 #define MIN_GPU_RATIO 0.05f             // Minimum GPU ratio (always do some GPU work)
 #define MAX_GPU_RATIO 0.95f             // Maximum GPU ratio (always do some FPGA work)

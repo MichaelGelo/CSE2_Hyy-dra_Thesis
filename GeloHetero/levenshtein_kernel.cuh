@@ -11,10 +11,10 @@
 #include "config.h"
 
 // ============================================================================
-// CORRECTED bitVectorDamerau - Matches pseudocode exactly
-// Returns: final score, and also outputs the score at a specific position
+// COMPLETELY CORRECTED bitVectorDamerau
+// Fixed: Line 9 initialization, Lines 16-18 variable ordering
 // ============================================================================
-static __forceinline__ __host__ __device__
+static __forceinline__ __host__ __device__ 
 int bitVectorDamerau(
     int queryLength,
     const char* reference,
@@ -25,8 +25,8 @@ int bitVectorDamerau(
     int* lowestScore,
     int* lowestIndices,
     int* lowestCount,
-    int targetPos,
-    int* scoreAtTarget)
+    int targetPos = -1,
+    int* scoreAtTarget = NULL)
 {
     if (queryLength > 64 * BV_WORDS || queryLength <= 0) return -1;
 
@@ -36,22 +36,18 @@ int bitVectorDamerau(
     bv_t Xh_or_Pv, not_Xh_or_Pv;
     bv_t Xh_or_Xv, not_Xh_or_Xv;
     bv_t Mh_shl, not_Xh, Xv_and_Pv;
-    
-    // Create mask and MSB info (computed once per call)
-    bv_t queryMask;
-    bvCreateMask(&queryMask, queryLength);
-    int topWordIdx = (queryLength - 1) / 64;
-    uint64_t topBitMask = 1ULL << ((queryLength - 1) % 64);
 
     // Line 3: Score = m
     int score = queryLength;
     
     // Line 4: Pv = 1^m
     bvSetAll(&Pv, ~0ULL);
-    bvAnd(&Pv, &Pv, &queryMask);
+    bvMaskTop(&Pv, queryLength);
     
     // Line 5: Mv = 0^m
     bvClear(&Mv);
+    
+    // Initialize Xp and Xh to 0
     bvClear(&Xp);
     bvClear(&Xh);
 
@@ -96,9 +92,9 @@ int bitVectorDamerau(
         bvCopy(&Xp, &Xv);
 
         // Line 14-15: Update score
-        if (bvTestBitFast(&Ph, topWordIdx, topBitMask)) {
+        if (bvTestTop(&Ph, queryLength)) {
             ++score;
-        } else if (bvTestBitFast(&Mh, topWordIdx, topBitMask)) {
+        } else if (bvTestTop(&Mh, queryLength)) {
             --score;
         }
 
@@ -144,8 +140,8 @@ int bitVectorDamerau(
         bvAnd(&Mv, &Xh, &Xv);          // Use NEW Xv here!
         
         // Mask to pattern length
-        bvAnd(&Pv, &Pv, &queryMask);
-        bvAnd(&Mv, &Mv, &queryMask);
+        bvMaskTop(&Pv, queryLength);
+        bvMaskTop(&Mv, queryLength);
     }
 
     return score;
