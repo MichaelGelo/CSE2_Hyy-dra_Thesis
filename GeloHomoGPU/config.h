@@ -13,8 +13,8 @@
 // ============================================================================
 // FILE PATHS
 // ============================================================================
-#define QUERY_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/mque_2_256.fasta"
-#define REFERENCE_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/mref_8_50M.fasta"
+#define QUERY_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/que1_256.fasta"
+#define REFERENCE_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/StiffBrome.fasta"
 // ============================================================================
 // ALGORITHM LIMITS
 // ============================================================================

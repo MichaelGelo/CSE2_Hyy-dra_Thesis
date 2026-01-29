@@ -138,27 +138,30 @@ static void split_reference_for_fpga_gpu(
         gpu_len = total_len;
     }
 
-    // Calculate FPGA start with overlap
-    // overlap = query_len - 1 (standard for pattern matching)
-    int fpga_start = gpu_len - (query_len - 1);
-    if (fpga_start < 0) {
-        fpga_start = 0;
-    }
-    if (fpga_start > total_len) {
-        fpga_start = total_len;
-    }
+    // CRITICAL FIX: FPGA must always start from position 0!
+    // The FPGA algorithm has position-dependent behavior and gives incorrect
+    // results when starting from arbitrary positions. To work around this,
+    // we always give FPGA the FULL reference starting from position 0.
+    int fpga_start = 0;
 
-    // Save FPGA portion to file
+    // Save FPGA portion to file (ALWAYS from position 0)
     save_fpga_split_to_fasta(sequence, fpga_start, ref_no);
 
     // Allocate and copy GPU portion to memory
+    // GPU needs extended reference for sliding window computation
     if (gpu_len <= 0) {
         *gpu_ref_out = NULL;
         *gpu_len_out = 0;
         return;
     }
 
-    char *gpu_buf = (char*)malloc((size_t)gpu_len + 1);
+    // Extend GPU buffer to include characters needed for final sliding windows
+    int gpu_extended_len = gpu_len + (query_len - 1);
+    if (gpu_extended_len > total_len) {
+        gpu_extended_len = total_len;
+    }
+
+    char *gpu_buf = (char*)malloc((size_t)gpu_extended_len + 1);
     if (!gpu_buf) {
         fprintf(stderr, "Error: malloc failed for GPU reference\n");
         *gpu_ref_out = NULL;
@@ -166,11 +169,11 @@ static void split_reference_for_fpga_gpu(
         return;
     }
     
-    memcpy(gpu_buf, sequence, (size_t)gpu_len);
-    gpu_buf[gpu_len] = '\0';
+    memcpy(gpu_buf, sequence, (size_t)gpu_extended_len);
+    gpu_buf[gpu_extended_len] = '\0';
     
     *gpu_ref_out = gpu_buf;
-    *gpu_len_out = gpu_len;
+    *gpu_len_out = gpu_extended_len;  // Report extended length
 }
 
 // ============================================================================

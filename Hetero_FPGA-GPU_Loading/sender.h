@@ -1,303 +1,165 @@
-// sender.h
+#ifndef SENDER_H
+#define SENDER_H
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <libgen.h>   // for basename
-#include <regex.h>
+#include <unistd.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <netinet/tcp.h>
 #include <sys/time.h>
 
-#define USERNAME        "xilinx"
-#define FPGA_IP         "192.168.2.99"
-#define REMOTE_PATH     "/home/xilinx/jupyter_notebooks/updatedbit"
-#define FPGA_SCRIPT     "fpga_code.py"
-
-// Base paths - files will be fpga_ref0.fasta, fpga_ref1.fasta, etc.
-#define HOST_FPGA_REF_DIR   "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Hetero_FPGA-GPU_Loading/fpga_splits"
-#define HOST_FPGA_QUERY_DIR "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Hetero_FPGA-GPU_Loading/fpga_splits"
-
-// Path to private SSH key
-#define SSH_KEY         "~/.ssh/id_rsa_fpga"
-
-double get_elapsed_time(struct timeval start, struct timeval end) {
-    return (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) / 1e6;
-}
+// ================= CONFIGURATION =================
+#define FPGA_IP "192.168.2.99"
+#define FPGA_PORT 5000
+#define RECV_BUF_SIZE 4096
+// =================================================
 
 typedef struct {
     double hw_exec_time_ms;
     int final_score;
     int lowest_score;
-    unsigned long *lowest_indexes;
+    unsigned long *lowest_indexes; 
     int num_lowest_indexes;
-    double overlay_load_ms;
     double total_exec_ms;
 } FPGAResult;
 
-void free_fpga_result(FPGAResult *res) {
-    if (res->lowest_indexes) free(res->lowest_indexes);
-    res->lowest_indexes = NULL;
-    res->num_lowest_indexes = 0;
+static double get_elapsed_time_ms(struct timeval start, struct timeval end) {
+    return ((end.tv_sec - start.tv_sec) * 1000.0) + ((end.tv_usec - start.tv_usec) / 1000.0);
 }
 
-// Single FPGA execution (for one query-ref pair)
-FPGAResult run_single_fpga(const char* ref_file, const char* query_file) {
+// Send all bytes
+static int send_all(int sock, const void *data, size_t size) {
+    const char *ptr = (const char *)data;
+    size_t remaining = size;
+    while (remaining > 0) {
+        ssize_t sent = send(sock, ptr, remaining, 0);
+        if (sent <= 0) return -1;
+        ptr += sent;
+        remaining -= sent;
+    }
+    return 0;
+}
+
+// Helper to parse Python list string: "[123, 456, 789]"
+static void parse_python_list(char* list_str, FPGAResult* res) {
+    // 1. Remove brackets
+    char* start = strchr(list_str, '[');
+    char* end = strchr(list_str, ']');
+    
+    if (!start || !end) return;
+    
+    *end = '\0'; // Remove closing bracket
+    start++;     // Skip opening bracket
+    
+    // 2. Count items
+    int count = 0;
+    char* temp = strdup(start);
+    char* token = strtok(temp, ", ");
+    while(token) {
+        if(strlen(token) > 0) count++;
+        token = strtok(NULL, ", ");
+    }
+    free(temp);
+    
+    res->num_lowest_indexes = count;
+    if (count == 0) return;
+
+    // 3. Allocate and fill
+    res->lowest_indexes = (unsigned long*)malloc(count * sizeof(unsigned long));
+    int i = 0;
+    token = strtok(start, ", ");
+    while(token) {
+        // Python indices are ints, we store as unsigned long
+        res->lowest_indexes[i++] = strtoul(token, NULL, 10);
+        token = strtok(NULL, ", ");
+    }
+}
+
+// === RAM-TO-RAM TCP EXECUTION (LEGACY/TEXT MODE) ===
+static FPGAResult run_fpga_tcp_ram(const char* ref_seq, const char* query_seq) {
     FPGAResult result = {0};
     result.final_score = -1;
     result.lowest_score = -1;
-    result.lowest_indexes = NULL;
-    result.num_lowest_indexes = 0;
-
-    char command[4096];
-    char remote_ref[512], remote_que[512];
-    char temp_ref_path[1024], temp_query_path[1024];
+    
+    int sock;
+    struct sockaddr_in server_addr;
     struct timeval start, end;
-    double elapsed;
 
-    // Copy string literals to mutable buffers before calling basename
-    strncpy(temp_ref_path, ref_file, sizeof(temp_ref_path) - 1);
-    temp_ref_path[sizeof(temp_ref_path) - 1] = '\0';
-    strncpy(temp_query_path, query_file, sizeof(temp_query_path) - 1);
-    temp_query_path[sizeof(temp_query_path) - 1] = '\0';
+    // 1. Setup Socket
+    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        perror("Socket creation failed");
+        return result;
+    }
 
-    snprintf(remote_ref, sizeof(remote_ref), "%s/%s", REMOTE_PATH, basename(temp_ref_path));
-    snprintf(remote_que, sizeof(remote_que), "%s/%s", REMOTE_PATH, basename(temp_query_path));
+    int flag = 1;
+    setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(int));
 
-    // Send reference file via rsync
-    printf("Sending reference: %s\n", ref_file);
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(FPGA_PORT);
+    inet_pton(AF_INET, FPGA_IP, &server_addr.sin_addr);
+
+    if (connect(sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        perror("Connection to FPGA failed");
+        close(sock);
+        return result;
+    }
+
     gettimeofday(&start, NULL);
-    snprintf(command, sizeof(command),
-             "rsync -avz -e 'ssh -i %s -o StrictHostKeyChecking=no' %s %s@%s:%s/",
-             SSH_KEY, ref_file, USERNAME, FPGA_IP, REMOTE_PATH);
-    if (system(command) != 0) fprintf(stderr, "Failed to send reference\n");
-    gettimeofday(&end, NULL);
-    elapsed = get_elapsed_time(start, end);
-    printf("Reference file sent in %.3f seconds.\n", elapsed);
 
-    // Run FPGA script remotely
-    printf("Running FPGA computation...\n");
-    gettimeofday(&start, NULL);
-    snprintf(command, sizeof(command),
-             "ssh -i %s -o StrictHostKeyChecking=no %s@%s "
-             "\"sudo python3 %s/%s %s %s\"",
-             SSH_KEY, USERNAME, FPGA_IP,
-             REMOTE_PATH, FPGA_SCRIPT,
-             remote_ref, remote_que);
+    // --- PROTOCOL MATCHING YOUR PYTHON SERVER ---
+    
+    int r_len = (int)strlen(ref_seq);
+    int q_len = (int)strlen(query_seq);
+    
+    // 1. Send Header: [QueryLen, RefLen] (Native Little Endian)
+    // Note: Python reads 'ii' (native), so we send raw ints.
+    // Note: Python reads Query Length first!
+    int header[2] = { q_len, r_len };
+    send_all(sock, header, sizeof(header));
 
-    FILE *fp = popen(command, "r");
-    if (!fp) return result;
+    // 2. Send Payloads: Query First, then Reference
+    send_all(sock, query_seq, q_len);
+    send_all(sock, ref_seq, r_len);
 
-    char line[4096];
-    regex_t re_hw, re_score, re_lowest_score, re_lowest_indexes, re_overlay, re_total;
-    regmatch_t m[2];
-
-    // Compile regexes
-    regcomp(&re_hw,            "Hardware execution time: ([0-9\\.]+) ms", REG_EXTENDED);
-    regcomp(&re_score,         "Final edit distance score: ([0-9]+)", REG_EXTENDED);
-    regcomp(&re_lowest_score,  "Lowest score: ([0-9]+)", REG_EXTENDED);
-    regcomp(&re_lowest_indexes,"Lowest Score Indexes: \\[(.*)\\]", REG_EXTENDED);
-    regcomp(&re_overlay,       "Overlay load time: ([0-9\\.]+) ms", REG_EXTENDED);
-    regcomp(&re_total,         "Total script execution time: ([0-9\\.]+) ms", REG_EXTENDED);
-
-    while (fgets(line, sizeof(line), fp)) {
-        printf("%s", line);
-
-        if (!regexec(&re_hw, line, 2, m, 0)) {
-            char buf[64]; int len = m[1].rm_eo - m[1].rm_so;
-            strncpy(buf, line + m[1].rm_so, len); buf[len] = 0;
-            result.hw_exec_time_ms = atof(buf);
-        }
-        if (!regexec(&re_score, line, 2, m, 0)) {
-            char buf[32]; int len = m[1].rm_eo - m[1].rm_so;
-            strncpy(buf, line + m[1].rm_so, len); buf[len] = 0;
-            result.final_score = atoi(buf);
-        }
-        if (!regexec(&re_lowest_score, line, 2, m, 0)) {
-            char buf[32]; int len = m[1].rm_eo - m[1].rm_so;
-            strncpy(buf, line + m[1].rm_so, len); buf[len] = 0;
-            result.lowest_score = atoi(buf);
-        }
-        if (!regexec(&re_lowest_indexes, line, 2, m, 0)) {
-            char buf[4096]; 
-            int len = m[1].rm_eo - m[1].rm_so;
-            strncpy(buf, line + m[1].rm_so, len); 
-            buf[len] = 0;
-
-            char tmp[4096]; strcpy(tmp, buf);
-            char *token = strtok(tmp, " ");
-            int count = 0;
-
-            // Count valid numbers (not UINT_MAX, not 0)
-            while (token) {
-                unsigned long val = strtoul(token, NULL, 10);
-                if (strcmp(token, "...") != 0 && val != 4294967295UL && val != 0) count++;
-                token = strtok(NULL, " ");
+    // 3. Receive Text Response
+    char buffer[RECV_BUF_SIZE];
+    memset(buffer, 0, RECV_BUF_SIZE);
+    
+    // Simple read (assuming response fits in one packet, which fits your text format)
+    ssize_t n = recv(sock, buffer, RECV_BUF_SIZE - 1, 0);
+    
+    if (n > 0) {
+        buffer[n] = '\0'; // Null terminate
+        
+        // Parse Text: "Final Score: 123"
+        char* line = strtok(buffer, "\n");
+        while(line) {
+            if (strstr(line, "Hardware Time:")) {
+                sscanf(line, "Hardware Time: %lf", &result.hw_exec_time_ms);
             }
-
-            result.num_lowest_indexes = count;
-            if (count > 0) {
-                result.lowest_indexes = (unsigned long*) malloc(count * sizeof(unsigned long));
-                int idx = 0;
-                token = strtok(buf, " ");
-                while (token) {
-                    unsigned long val = strtoul(token, NULL, 10);
-                    if (strcmp(token, "...") != 0 && val != 4294967295UL && val != 0)
-                        result.lowest_indexes[idx++] = val;
-                    token = strtok(NULL, " ");
+            else if (strstr(line, "Final Score:")) {
+                sscanf(line, "Final Score: %d", &result.final_score);
+            }
+            else if (strstr(line, "Lowest Score:")) {
+                sscanf(line, "Lowest Score: %d", &result.lowest_score);
+            }
+            else if (strstr(line, "Indices:")) {
+                // "Indices: [10, 20]"
+                char* list_start = strchr(line, '[');
+                if (list_start) {
+                    parse_python_list(list_start, &result);
                 }
             }
-        }
-
-        if (!regexec(&re_overlay, line, 2, m, 0)) {
-            char buf[64]; int len = m[1].rm_eo - m[1].rm_so;
-            strncpy(buf, line + m[1].rm_so, len); buf[len] = 0;
-            result.overlay_load_ms = atof(buf);
-        }
-        if (!regexec(&re_total, line, 2, m, 0)) {
-            char buf[64]; int len = m[1].rm_eo - m[1].rm_so;
-            strncpy(buf, line + m[1].rm_so, len); buf[len] = 0;
-            result.total_exec_ms = atof(buf);
+            line = strtok(NULL, "\n");
         }
     }
 
-    regfree(&re_hw);
-    regfree(&re_score);
-    regfree(&re_lowest_score);
-    regfree(&re_lowest_indexes);
-    regfree(&re_overlay);
-    regfree(&re_total);
-
     gettimeofday(&end, NULL);
-    elapsed = get_elapsed_time(start, end);
-    printf("Remote FPGA script executed and parsed in %.3f seconds.\n\n", elapsed);
-
-    pclose(fp);
+    result.total_exec_ms = get_elapsed_time_ms(start, end) / 1000.0;
+    close(sock);
     return result;
 }
 
-// Run FPGA for multiple queries and references
-// Returns 2D array of results: results[query_idx][ref_idx]
-FPGAResult* send_and_run_fpga_single_ref(int num_queries, int ref_index, double *total_time_out) {
-    char command[4096];
-    char remote_ref[512], remote_que[512];
-    char temp_ref_path[1024], temp_query_path[1024];
-    struct timeval start, end, func_start, func_end;
-    double elapsed, total_fpga_ms = 0.0;
-    
-    printf("=== Running FPGA for %d queries against Reference %d ===\n\n", 
-           num_queries, ref_index);
-    
-    FPGAResult* results = (FPGAResult*)malloc(num_queries * sizeof(FPGAResult));
-    if (!results) {
-        fprintf(stderr, "Failed to allocate FPGA results\n");
-        if (total_time_out) *total_time_out = 0.0;
-        return NULL;
-    }
-    
-    // Send all queries first (if needed)
-    for (int q = 0; q < num_queries; q++) {
-        char query_file[1024];
-        gettimeofday(&start, NULL);
-        
-        snprintf(query_file, sizeof(query_file), "%s/fpga_query%d.fasta", 
-                 HOST_FPGA_QUERY_DIR, q);
-        printf("Sending query: %s\n", query_file);
-        
-        snprintf(command, sizeof(command),
-                 "rsync -avz -e 'ssh -i %s -o StrictHostKeyChecking=no' %s %s@%s:%s/",
-                 SSH_KEY, query_file, USERNAME, FPGA_IP, REMOTE_PATH);
-        
-        if (system(command) != 0) {
-            fprintf(stderr, "Failed to send query\n");
-        }
-        
-        gettimeofday(&end, NULL);
-        elapsed = get_elapsed_time(start, end);
-        printf("Query file sent in %.3f seconds.\n", elapsed);
-    }
-    
-    // Build reference file path
-    char ref_file[1024];
-    snprintf(ref_file, sizeof(ref_file), "%s/fpga_ref%d.fasta", 
-             HOST_FPGA_REF_DIR, ref_index);
-    
-    // Loop through all queries for THIS reference
-    for (int q = 0; q < num_queries; q++) {
-        printf("\n========================================\n");
-        printf("Processing: Query %d vs Reference %d\n", q, ref_index);
-        printf("========================================\n");
-        
-        char query_file[1024];
-        snprintf(query_file, sizeof(query_file), "%s/fpga_query%d.fasta", 
-                 HOST_FPGA_QUERY_DIR, q);
-        
-        // Run single FPGA computation
-        results[q] = run_single_fpga(ref_file, query_file);
-        
-        // Print immediate results
-        printf("\n--- FPGA Results: Q%d vs R%d ---\n", q, ref_index);
-        printf("Hardware execution time: %.2f ms\n", results[q].hw_exec_time_ms);
-        printf("Final score: %d\n", results[q].final_score);
-        printf("Lowest score: %d\n", results[q].lowest_score);
-        printf("Lowest indexes count: %d\n", results[q].num_lowest_indexes);
-        
-        if (results[q].num_lowest_indexes > 0) {
-            printf("Lowest indexes: [");
-            for (int i = 0; i < results[q].num_lowest_indexes; i++) {
-                printf("%lu", results[q].lowest_indexes[i]);
-                if (i < results[q].num_lowest_indexes - 1) printf(", ");
-            }
-            printf("]\n");
-        }
-        
-        printf("Total execution time: %.2f ms\n", results[q].total_exec_ms);
-        printf("----------------------------\n\n");
-    }
-    
-    
-    for (int q = 0; q < num_queries; q++) {
-        total_fpga_ms += results[q].hw_exec_time_ms;
-    }
-
-    double total_fpga_sec = total_fpga_ms / 1000.0;
-
-    if (total_time_out) {
-        *total_time_out = total_fpga_sec;
-    }
-    
-    printf("=== FPGA Total Time for Ref %d: %.6f seconds ===\n", ref_index, total_fpga_sec);
-    
-    return results;
-}
-
-// Free the 2D results array
-void free_fpga_results_multi(FPGAResult** results, int num_queries, int num_refs) {
-    if (!results) return;
-    
-    for (int q = 0; q < num_queries; q++) {
-        for (int r = 0; r < num_refs; r++) {
-            free_fpga_result(&results[q][r]);
-        }
-        free(results[q]);
-    }
-    free(results);
-}
-
-// Legacy single-pair function (for backward compatibility)
-FPGAResult send_and_run_fpga() {
-    char ref_file[1024];
-    char query_file[1024];
-    snprintf(ref_file, sizeof(ref_file), "%s/fpga_ref0.fasta", HOST_FPGA_REF_DIR);
-    snprintf(query_file, sizeof(query_file), "%s/fpga_query0.fasta", HOST_FPGA_QUERY_DIR);
-    
-    return run_single_fpga(ref_file, query_file);
-}
-
-void free_fpga_results_single_ref(FPGAResult* results, int num_queries) {
-    if (!results) return;
-    
-    for (int q = 0; q < num_queries; q++) {
-        if (results[q].lowest_indexes) {
-            free(results[q].lowest_indexes);
-        }
-    }
-    free(results);
-}
+#endif // SENDER_H

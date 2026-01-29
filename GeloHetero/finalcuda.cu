@@ -53,6 +53,30 @@ void* run_hyyro_gpu(void* args) {
     char** query_seqs = gpu_args->query_seqs;
     char** orig_refs = gpu_args->orig_refs;
 
+    // Check if GPU has any work to do
+    if (num_orig_refs == 0 || orig_refs == NULL || orig_refs[0] == NULL || strlen(orig_refs[0]) == 0) {
+        printf("[GPU] No work assigned (empty or zero-length reference), skipping\n");
+        gpu_args->avg_execution_time = 0.0;
+        gpu_args->success = 1;
+        
+        // Initialize empty output arrays
+        int total_orig_pairs = num_queries * num_orig_refs;
+        gpu_args->output_lowest_scores = (int*)malloc(total_orig_pairs * sizeof(int));
+        gpu_args->output_lowest_counts = (int*)malloc(total_orig_pairs * sizeof(int));
+        gpu_args->output_last_scores = (int*)malloc(total_orig_pairs * sizeof(int));
+        gpu_args->output_hit_counts = (int*)malloc(total_orig_pairs * sizeof(int));
+        gpu_args->output_lowest_indices = (int**)calloc(total_orig_pairs, sizeof(int*));
+        gpu_args->output_hit_indices = (int**)calloc(total_orig_pairs, sizeof(int*));
+        
+        for (int i = 0; i < total_orig_pairs; i++) {
+            gpu_args->output_lowest_scores[i] = 0x7f7f7f7f;  // No results
+            gpu_args->output_lowest_counts[i] = 0;
+            gpu_args->output_last_scores[i] = 0x7f7f7f7f;
+            gpu_args->output_hit_counts[i] = 0;
+        }
+        return NULL;
+    }
+
     printf("[GPU] Starting computation (Chunk: %d, Threshold: %d, Threads: %d)\n", 
            CHUNK_SIZE, PARTITION_THRESHOLD, THREADS_PER_BLOCK);
 
@@ -451,28 +475,43 @@ int main() {
             // because FPGA processes to the actual end of the reference
             int last_score = all_fpga_results[r][q].final_score;
 
-            // printf("GPU: %d (%d), FPGA: %d (%d)\n", lowest_gpu, gpu_lowest_count, lowest_fpga, fpga_lowest_count);
-
-            // ========== Merge lowest scores ==========
-            int final_merged_lowest_score = -1;
-            if (lowest_gpu != 0x7f7f7f7f && lowest_fpga != -1) {
-                final_merged_lowest_score = MIN(lowest_gpu, lowest_fpga);
-            } else if (lowest_gpu != 0x7f7f7f7f) {
-                final_merged_lowest_score = lowest_gpu;
-            } else {
-                final_merged_lowest_score = lowest_fpga;
+            // TWO-PASS MERGING (like homo GPU):
+            // Pass 1: Find global minimum score across GPU and FPGA
+            int final_merged_lowest_score = INT_MAX;
+            if (lowest_gpu != 0x7f7f7f7f) {
+                final_merged_lowest_score = MIN(final_merged_lowest_score, lowest_gpu);
+            }
+            if (lowest_fpga != -1) {
+                final_merged_lowest_score = MIN(final_merged_lowest_score, lowest_fpga);
+            }
+            if (final_merged_lowest_score == INT_MAX) {
+                final_merged_lowest_score = -1;
             }
 
             merged_lowest_scores[idx] = final_merged_lowest_score;
 
-            // ========== Merge lowest score indices ==========
+            // Pass 2: Collect indices that match global minimum
+            // Calculate GPU portion boundary
+            int gpu_extended_len = all_gpu_ref_lens[r];
+            int gpu_boundary = gpu_extended_len - (query_len - 1);
+            
             int total_index_count = 0;
             if (final_merged_lowest_score != -1) {
+                // Count GPU indices if they match
                 if (lowest_gpu == final_merged_lowest_score) {
                     total_index_count += gpu_lowest_count;
                 }
+                // Count FPGA indices if they match AND are beyond GPU boundary
                 if (lowest_fpga == final_merged_lowest_score) {
-                    total_index_count += fpga_lowest_count;
+                    // Filter FPGA indices: only those >= gpu_boundary
+                    for (int i = 0; i < fpga_lowest_count; i++) {
+                        if (all_fpga_results[r][q].lowest_indexes != NULL) {
+                            unsigned long fpga_global_pos = all_fpga_results[r][q].lowest_indexes[i];
+                            if (fpga_global_pos >= (unsigned long)gpu_boundary) {
+                                total_index_count++;
+                            }
+                        }
+                    }
                 }
             }
 
@@ -482,7 +521,7 @@ int main() {
                 merged_lowest_indices[idx] = (int*)malloc(total_index_count * sizeof(int));
                 int write_pos = 0;
 
-                // Add GPU indices if they match the merged lowest score
+                // Add GPU indices if they match the global minimum
                 if (lowest_gpu == final_merged_lowest_score &&
                     all_gpu_results[r].output_lowest_indices[gpu_idx] != NULL) {
                     for (int i = 0; i < gpu_lowest_count; i++) {
@@ -491,14 +530,17 @@ int main() {
                     }
                 }
 
-                // Add FPGA indices with proper offset if they match
+                // Add FPGA indices if they match the global minimum
+                // CRITICAL: FPGA now processes from position 0, so indices are already global
+                // Only include indices >= gpu_boundary to avoid overlap
                 if (lowest_fpga == final_merged_lowest_score &&
                     all_fpga_results[r][q].lowest_indexes != NULL) {
-                    int gpu_len = all_gpu_ref_lens[r];
-                    int fpga_offset = gpu_len - query_len + 1;
                     for (int i = 0; i < fpga_lowest_count; i++) {
-                        merged_lowest_indices[idx][write_pos++] =
-                            (int)(all_fpga_results[r][q].lowest_indexes[i]) + fpga_offset;
+                        unsigned long fpga_global_pos = all_fpga_results[r][q].lowest_indexes[i];
+                        // Only add if beyond GPU processed region
+                        if (fpga_global_pos >= (unsigned long)gpu_boundary) {
+                            merged_lowest_indices[idx][write_pos++] = (int)fpga_global_pos;
+                        }
                     }
                 }
 

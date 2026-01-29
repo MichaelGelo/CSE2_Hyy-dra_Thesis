@@ -10,8 +10,8 @@
 // FILE PATHS
 // Input files for queries and references
 // ============================================================================
-#define QUERY_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/mque_2_256.fasta"
-#define REFERENCE_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/mref_8_50M.fasta"
+#define QUERY_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/que1_256.fasta"
+#define REFERENCE_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/StiffBrome.fasta"
 #define FPGA_OUTPUT_DIR "./fpga_splits/"
 
 // ============================================================================
@@ -20,6 +20,7 @@
 // ============================================================================
 #define USERNAME        "xilinx"
 #define FPGA_IP         "192.168.2.99"
+#define FPGA_PORT       5000                // TCP port for direct socket communication
 #define REMOTE_PATH     "/home/xilinx/jupyter_notebooks/updatedbit"
 #define FPGA_SCRIPT     "fpga_code.py"
 #define SSH_KEY         "~/.ssh/id_rsa_fpga"
@@ -60,8 +61,8 @@
 // ADAPTIVE SCHEDULING PARAMETERS
 // Controls GPU/FPGA workload distribution
 // ============================================================================
-#define GPU_SPEED_RATIO  0.5f           // Initial GPU workload ratio (0.0-1.0)
-#define FPGA_SPEED_RATIO 0.5f           // Initial FPGA workload ratio (0.0-1.0)
+#define GPU_SPEED_RATIO  0.05f           // Initial GPU workload ratio (0.0-1.0) - TESTING FPGA ONLY
+#define FPGA_SPEED_RATIO 0.95f           // Initial FPGA workload ratio (0.0-1.0) - TESTING FPGA ONLY
 
 #define MIN_GPU_RATIO 0.05f             // Minimum GPU ratio (always do some GPU work)
 #define MAX_GPU_RATIO 0.95f             // Maximum GPU ratio (always do some FPGA work)

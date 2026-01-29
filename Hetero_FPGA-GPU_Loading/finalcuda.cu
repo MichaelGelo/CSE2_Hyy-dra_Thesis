@@ -875,30 +875,72 @@ int main() {
             exit(EXIT_FAILURE);
         }
 
-        // Run FPGA blocking call (unchanged)
-        double fpga_time = 0.0;
-        FPGAResult* fpga_results = send_and_run_fpga_single_ref(num_queries, ref_idx, &fpga_time);
+// ====================================================================
+        // TCP RAM-Stream FPGA Execution
+        // ====================================================================
+        double fpga_wall_start = now_seconds();
+        
+        // 1. Calculate pointer to FPGA's portion of data
+        int total_len = strlen(orig_refs[ref_idx]);
+        int gpu_processed_len = (int)(total_len * gpu_ratio);
+        int overlap = query_len - 1;
+        int fpga_start_idx = gpu_processed_len - overlap;
+        if (fpga_start_idx < 0) fpga_start_idx = 0;
+
+        const char* fpga_ref_ptr = &orig_refs[ref_idx][fpga_start_idx];
+
+        // 2. Allocate Results Array
+        FPGAResult* fpga_results = (FPGAResult*)malloc(num_queries * sizeof(FPGAResult));
+        if (!fpga_results) { fprintf(stderr, "Malloc failed for FPGA results\n"); exit(1); }
+
+        // 3. Process Queries & Accumulate PURE Hardware Time
+        double fpga_pure_hw_ms = 0.0; // <--- NEW ACCUMULATOR
+
+        for (int q = 0; q < num_queries; q++) {
+            // Call the function (works for both Loop or Batch mode)
+            fpga_results[q] = run_fpga_tcp_ram(fpga_ref_ptr, query_seqs[q]);
+            
+            // EXTRACT PURE TIME: This comes from the Python server's response
+            // "Hardware Time: X ms"
+            fpga_pure_hw_ms = fpga_results[q].hw_exec_time_ms; //bobo
+            
+            // Adjust indices
+            if (fpga_results[q].num_lowest_indexes > 0) {
+                for(int k=0; k<fpga_results[q].num_lowest_indexes; k++) {
+                    fpga_results[q].lowest_indexes[k] += fpga_start_idx;
+                }
+            }
+        }
+
+        // 4. Calculate Final Times
+        double fpga_total_wall_sec = now_seconds() - fpga_wall_start; // Includes Network (Use for Load Balancing)
+        double fpga_pure_hw_sec = fpga_pure_hw_ms / 1000.0;           // Excludes Network (Use for Reporting)
+
+        // ====================================================================
 
         // Wait for GPU
         pthread_join(gpu_thread, NULL);
-        double gpu_time = gpu_args.avg_execution_time;
+        double gpu_time = gpu_args.avg_execution_time; // This is ALREADY Pure Kernel Time
 
-        printf("=== GPU Complete: %.6f sec ===\n", gpu_time);
-        printf("=== FPGA Complete: %.6f sec ===\n", fpga_time);
+        // === PRINT COMPARISON (Now Fair!) ===
+        printf("=== GPU Kernel Time:     %.6f sec ===\n", gpu_time);
+        printf("=== FPGA Hardware Time:  %.6f sec === (Total w/ Network: %.6f)\n", fpga_pure_hw_sec, fpga_total_wall_sec);
 
-        // store per-ref times and accumulate totals
+        // Store PURE time for the final results summary
         gpu_time_per_ref[ref_idx] = gpu_time;
-        fpga_time_per_ref[ref_idx] = fpga_time;
+        fpga_time_per_ref[ref_idx] = fpga_pure_hw_sec; 
         total_gpu_time += gpu_time;
-        total_fpga_time += fpga_time;
+        total_fpga_time += fpga_pure_hw_sec;
 
-        // Start ratio thread: pass old ratio in args, compute new ratio
+        // CRITICAL: Load Balancer must use TOTAL Wall Time
+        // The network bottleneck is real; if we hide it from the balancer, 
+        // it will send too much data and crash the system.
         RatioThreadArgs ratio_args;
         ratio_args.prev_gpu_time = gpu_time;
-        ratio_args.prev_fpga_time = fpga_time;
+        ratio_args.prev_fpga_time = fpga_pure_hw_sec; // P THIS AS TOTAL (bobo ka)
         ratio_args.old_gpu_ratio  = gpu_ratio;
         ratio_args.taken = 0;
-        ratio_args.new_gpu_ratio = gpu_ratio; // default
+        ratio_args.new_gpu_ratio = gpu_ratio; 
 
         pthread_t ratio_thread;
         if (pthread_create(&ratio_thread, NULL, ratio_thread_func, &ratio_args) != 0) {
@@ -906,25 +948,25 @@ int main() {
             exit(EXIT_FAILURE);
         }
 
-        // Wait for handshake that ratio thread snapshot the values
+        // Wait for handshake
         pthread_mutex_lock(&ratio_mutex);
         while (ratio_args.taken == 0) {
             pthread_cond_wait(&ratio_cond, &ratio_mutex);
         }
         pthread_mutex_unlock(&ratio_mutex);
 
-        // Join ratio thread (it finished its calculation)
+        // Join ratio thread
         pthread_join(ratio_thread, NULL);
 
-        // update gpu_ratio and fpga_ratio for the next reference
+        // Update ratios
         gpu_ratio = ratio_args.new_gpu_ratio;
         fpga_ratio = 1.0f - gpu_ratio;
 
-        // store updated ratio for timeline
+        // Store updated ratio
         ratio_updated_gpu[ref_idx]  = gpu_ratio;
         ratio_updated_fpga[ref_idx] = fpga_ratio;
 
-        // store results for later merging
+        // Store results
         all_gpu_results[ref_idx]  = gpu_args;
         all_fpga_results[ref_idx] = fpga_results;
     }
