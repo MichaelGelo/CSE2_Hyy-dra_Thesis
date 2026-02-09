@@ -100,6 +100,9 @@ static inline bool allocateGpuMemory(
     
     printf("[GPU] Allocating memory: %.1f MB (Eq:%.1f + Q:%.1f + R:%.1f)\n", 
            total_mb, eq_mb, q_mb, r_mb);
+    printf("[GPU] Details: numQueries=%d, numChunks=%d, numOrigRefs=%d\n",
+           numQueries, numChunks, numOrigRefs);
+    printf("[GPU] totalPairChunks=%lld, totalOrigPairs=%lld\n", totalPairChunks, totalOrigPairs);
     
     // Input data
     CUDA_CHECK(cudaMalloc(&buffers->d_EqQueries, (size_t)numQueries * 256 * sizeof(bv_t)));
@@ -137,9 +140,18 @@ static inline void packSequencesEfficient(
     char** hostQueries, char** hostRefs, int** hostRefOffsets,
     size_t* totalRefBytes)
 {
-    // Allocate query buffer (fixed size per query)
-    size_t queriesBytes = (size_t)numQueries * MAX_QUERY_LENGTH * sizeof(char);
+    // Get actual query length instead of using fixed MAX_QUERY_LENGTH
+    int actualQueryLen = (numQueries > 0) ? (int)strlen(queries[0]) : 0;
+    
+    // Align to cache line (128 bytes) for better memory performance
+    int alignedQueryLen = ((actualQueryLen + 127) / 128) * 128;
+    
+    // Allocate query buffer with proper alignment
+    size_t queriesBytes = (size_t)numQueries * alignedQueryLen * sizeof(char);
     *hostQueries = (char*)calloc(queriesBytes, 1);
+    
+    printf("[GPU] Query packing: length=%d, aligned=%d, slots=%d, total=%.1f KB\n",
+           actualQueryLen, alignedQueryLen, numQueries, queriesBytes / 1024.0);
     
     // Calculate total reference bytes needed
     *totalRefBytes = 0;
@@ -151,11 +163,11 @@ static inline void packSequencesEfficient(
     *hostRefs = (char*)calloc(*totalRefBytes, 1);
     *hostRefOffsets = (int*)malloc(numChunks * sizeof(int));
     
-    // Pack queries
+    // Pack queries with proper alignment
     for (int q = 0; q < numQueries; q++) {
-        strncpy(&(*hostQueries)[(size_t)q * MAX_QUERY_LENGTH],
+        strncpy(&(*hostQueries)[(size_t)q * alignedQueryLen],
                 queries[q],
-                MAX_QUERY_LENGTH - 1);
+                alignedQueryLen - 1);
     }
     
     // Pack references contiguously

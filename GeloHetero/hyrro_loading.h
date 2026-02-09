@@ -148,6 +148,10 @@ static void split_reference_for_fpga_gpu(
         fpga_start = total_len;
     }
 
+    printf("[SPLIT] Query length: %d, Overlap: %d\n", query_len, query_len - 1);
+    printf("[SPLIT] Reference total: %d, GPU portion: %d, FPGA start: %d\n", 
+           total_len, gpu_len, fpga_start);
+
     // Save FPGA portion to file
     save_fpga_split_to_fasta(sequence, fpga_start, ref_no);
 

@@ -1,6 +1,7 @@
 // levenshtein_kernel.cuh
 // COMPLETELY FIXED Hyyro-Damerau implementation for heterogeneous system
 // This version fixes BOTH the algorithm bugs AND the last score tracking
+// WITH QUERY-LENGTH OPTIMIZATIONS
 
 #ifndef LEVENSHTEIN_KERNEL_CUH
 #define LEVENSHTEIN_KERNEL_CUH
@@ -11,11 +12,12 @@
 #include "config.h"
 
 // ============================================================================
-// COMPLETELY CORRECTED bitVectorDamerau
-// Fixed: Line 9 initialization, Lines 16-18 variable ordering
+// OPTIMIZED bitVectorDamerau with template specialization for word count
+// Uses only the required number of 64-bit words based on query length
 // ============================================================================
+template<int WORDS>
 static __forceinline__ __host__ __device__ 
-int bitVectorDamerau(
+int bitVectorDamerauOptimized(
     int queryLength,
     const char* reference,
     int referenceLength,
@@ -28,7 +30,32 @@ int bitVectorDamerau(
     int targetPos = -1,
     int* scoreAtTarget = NULL)
 {
-    if (queryLength > 64 * BV_WORDS || queryLength <= 0) return -1;
+    if (queryLength > 64 * WORDS || queryLength <= 0) return -1;
+
+    // ===  Inline optimized operations using only WORDS (not BV_WORDS) ===
+    #define BV_OR_W(out, a, b) do { for (int _i = 0; _i < WORDS; ++_i) (out)->w[_i] = (a)->w[_i] | (b)->w[_i]; } while(0)
+    #define BV_AND_W(out, a, b) do { for (int _i = 0; _i < WORDS; ++_i) (out)->w[_i] = (a)->w[_i] & (b)->w[_i]; } while(0)
+    #define BV_XOR_W(out, a, b) do { for (int _i = 0; _i < WORDS; ++_i) (out)->w[_i] = (a)->w[_i] ^ (b)->w[_i]; } while(0)
+    #define BV_NOT_W(out, a) do { for (int _i = 0; _i < WORDS; ++_i) (out)->w[_i] = ~(a)->w[_i]; } while(0)
+    #define BV_COPY_W(out, in) do { for (int _i = 0; _i < WORDS; ++_i) (out)->w[_i] = (in)->w[_i]; } while(0)
+    #define BV_CLEAR_W(out) do { for (int _i = 0; _i < WORDS; ++_i) (out)->w[_i] = 0ULL; } while(0)
+    #define BV_SETALL_W(out, v) do { for (int _i = 0; _i < WORDS; ++_i) (out)->w[_i] = (v); } while(0)
+    
+    #define BV_SHL1_W(out, in) do { \
+        uint64_t _carry[WORDS > 1 ? WORDS - 1 : 1]; \
+        for (int _i = 0; _i < WORDS - 1; ++_i) _carry[_i] = (in)->w[_i] >> 63; \
+        (out)->w[0] = ((in)->w[0] << 1); \
+        for (int _i = 1; _i < WORDS; ++_i) (out)->w[_i] = ((in)->w[_i] << 1) | _carry[_i - 1]; \
+    } while(0)
+    
+    #define BV_ADD_W(out, a, b) do { \
+        uint64_t _carry = 0ULL; \
+        for (int _i = 0; _i < WORDS; ++_i) { \
+            uint64_t _sum = (a)->w[_i] + (b)->w[_i] + _carry; \
+            _carry = (_sum < (a)->w[_i]) || (_sum == (a)->w[_i] && _carry); \
+            (out)->w[_i] = _sum; \
+        } \
+    } while(0)
 
     // === Declare ALL bit-vectors ===
     bv_t Pv, Mv, Xv, Xh, Ph, Mh, Xp;
@@ -37,19 +64,23 @@ int bitVectorDamerau(
     bv_t Xh_or_Xv, not_Xh_or_Xv;
     bv_t Mh_shl, not_Xh, Xv_and_Pv;
 
+    // Pre-compute mask and bit position once (avoid branching/division in setup and inner loop)
+    bv_t queryMask;
+    bvCreateMask(&queryMask, queryLength);
+    int topWordIdx = (queryLength - 1) / 64;
+    uint64_t topBitMask = 1ULL << ((queryLength - 1) % 64);
+
     // Line 3: Score = m
     int score = queryLength;
     
-    // Line 4: Pv = 1^m
-    bvSetAll(&Pv, ~0ULL);
-    bvMaskTop(&Pv, queryLength);
+    // Line 4: Pv = 1^m (using optimized operations on WORDS only)
+    BV_SETALL_W(&Pv, ~0ULL);
+    BV_AND_W(&Pv, &Pv, &queryMask);
     
     // Line 5: Mv = 0^m
-    bvClear(&Mv);
-    
-    // Initialize Xp and Xh to 0
-    bvClear(&Xp);
-    bvClear(&Xh);
+    BV_CLEAR_W(&Mv);
+    BV_CLEAR_W(&Xp);
+    BV_CLEAR_W(&Xh);
 
     *zeroCount = 0;
     *lowestCount = 0;
@@ -61,40 +92,38 @@ int bitVectorDamerau(
         unsigned char c = (unsigned char)reference[j];
         const bv_t* Eqc = &Eq[c];
 
-        // ==================== CRITICAL FIX #1 ====================
         // Line 8: Xv = Eq | Mv
-        bvOr(&Xv, Eqc, &Mv);
+        BV_OR_W(&Xv, Eqc, &Mv);
         
         // Line 9: Xh = (((~Xh) & Xv) << 1) & Xp
-        // THIS LINE WAS COMPLETELY MISSING IN YOUR CODE!
-        bvNot(&not_Xh, &Xh);           // Step 1: ~Xh
-        bvAnd(&tmp, &not_Xh, &Xv);     // Step 2: (~Xh) & Xv
-        bvShl1(&tmp2, &tmp);           // Step 3: ((...) << 1)
-        bvAnd(&Xh, &tmp2, &Xp);        // Step 4: (...) & Xp → Xh
+        BV_NOT_W(&not_Xh, &Xh);
+        BV_AND_W(&tmp, &not_Xh, &Xv);
+        BV_SHL1_W(&tmp2, &tmp);
+        BV_AND_W(&Xh, &tmp2, &Xp);
         
         // Line 10: Xh = Xh | (((Xv & Pv) + Pv) ^ Pv) | Xv | Mv
-        bvAnd(&Xv_and_Pv, &Xv, &Pv);  // (Xv & Pv)
-        bvAdd(&addtmp, &Xv_and_Pv, &Pv); // (Xv & Pv) + Pv
-        bvXor(&tmp, &addtmp, &Pv);     // ((Xv & Pv) + Pv) ^ Pv
-        bvOr(&Xh, &Xh, &tmp);          // Xh = Xh | (...)
-        bvOr(&Xh, &Xh, &Xv);           // Xh = Xh | Xv
-        bvOr(&Xh, &Xh, &Mv);           // Xh = Xh | Mv
+        BV_AND_W(&Xv_and_Pv, &Xv, &Pv);
+        BV_ADD_W(&addtmp, &Xv_and_Pv, &Pv);
+        BV_XOR_W(&tmp, &addtmp, &Pv);
+        BV_OR_W(&Xh, &Xh, &tmp);
+        BV_OR_W(&Xh, &Xh, &Xv);
+        BV_OR_W(&Xh, &Xh, &Mv);
         
         // Line 11: Ph = Mv | ~(Xh | Pv)
-        bvOr(&Xh_or_Pv, &Xh, &Pv);
-        bvNot(&not_Xh_or_Pv, &Xh_or_Pv);
-        bvOr(&Ph, &Mv, &not_Xh_or_Pv);
+        BV_OR_W(&Xh_or_Pv, &Xh, &Pv);
+        BV_NOT_W(&not_Xh_or_Pv, &Xh_or_Pv);
+        BV_OR_W(&Ph, &Mv, &not_Xh_or_Pv);
         
         // Line 12: Mh = Xh & Pv
-        bvAnd(&Mh, &Xh, &Pv);
+        BV_AND_W(&Mh, &Xh, &Pv);
         
         // Line 13: Xp = Xv (store OLD Xv before updating)
-        bvCopy(&Xp, &Xv);
+        BV_COPY_W(&Xp, &Xv);
 
-        // Line 14-15: Update score
-        if (bvTestTop(&Ph, queryLength)) {
+        // Line 14-15: Update score (using fast bit test with pre-computed values)
+        if (bvTestBitFast(&Ph, topWordIdx, topBitMask)) {
             ++score;
-        } else if (bvTestTop(&Mh, queryLength)) {
+        } else if (bvTestBitFast(&Mh, topWordIdx, topBitMask)) {
             --score;
         }
 
@@ -123,28 +152,68 @@ int bitVectorDamerau(
             }
         }
 
-        // ==================== CRITICAL FIX #2 ====================
-        // Line 16: Xv = (Ph << 1)
-        // MUST happen BEFORE lines 17-18 use the NEW Xv!
-        bvShl1(&Xv, &Ph);
+        // Line 16: Xv = (Ph << 1) - MUST happen BEFORE lines 17-18 use the NEW Xv!
+        BV_SHL1_W(&Xv, &Ph);
         
-        // Line 17: Pv = (Mh << 1) | ~(Xh | Xv)
-        // Uses the NEW Xv from line 16 (not the old one from line 8)!
-        bvShl1(&Mh_shl, &Mh);
-        bvOr(&Xh_or_Xv, &Xh, &Xv);     // Use NEW Xv here!
-        bvNot(&not_Xh_or_Xv, &Xh_or_Xv);
-        bvOr(&Pv, &Mh_shl, &not_Xh_or_Xv);
+        // Line 17: Pv = (Mh << 1) | ~(Xh | Xv) - Uses the NEW Xv from line 16
+        BV_SHL1_W(&Mh_shl, &Mh);
+        BV_OR_W(&Xh_or_Xv, &Xh, &Xv);
+        BV_NOT_W(&not_Xh_or_Xv, &Xh_or_Xv);
+        BV_OR_W(&Pv, &Mh_shl, &not_Xh_or_Xv);
         
-        // Line 18: Mv = Xh & Xv
-        // Also uses the NEW Xv from line 16!
-        bvAnd(&Mv, &Xh, &Xv);          // Use NEW Xv here!
+        // Line 18: Mv = Xh & Xv - Also uses the NEW Xv from line 16
+        BV_AND_W(&Mv, &Xh, &Xv);
         
-        // Mask to pattern length
+        // Mask to pattern length (using standard function - called once per iteration)
         bvMaskTop(&Pv, queryLength);
         bvMaskTop(&Mv, queryLength);
     }
 
+    // Clean up macros
+    #undef BV_OR_W
+    #undef BV_AND_W
+    #undef BV_XOR_W
+    #undef BV_NOT_W
+    #undef BV_COPY_W
+    #undef BV_CLEAR_W
+    #undef BV_SETALL_W
+    #undef BV_SHL1_W
+    #undef BV_ADD_W
+
     return score;
+}
+
+// ============================================================================
+// DISPATCHER: Select optimized template based on query length
+// ============================================================================
+static __forceinline__ __host__ __device__ 
+int bitVectorDamerau(
+    int queryLength,
+    const char* reference,
+    int referenceLength,
+    const bv_t* Eq,
+    int* zeroIndices,
+    int* zeroCount,
+    int* lowestScore,
+    int* lowestIndices,
+    int* lowestCount,
+    int targetPos = -1,
+    int* scoreAtTarget = NULL)
+{
+    // Dispatch to optimized template based on required word count
+    if (queryLength <= 64) {
+        return bitVectorDamerauOptimized<1>(queryLength, reference, referenceLength, Eq,
+            zeroIndices, zeroCount, lowestScore, lowestIndices, lowestCount, targetPos, scoreAtTarget);
+    } else if (queryLength <= 128) {
+        return bitVectorDamerauOptimized<2>(queryLength, reference, referenceLength, Eq,
+            zeroIndices, zeroCount, lowestScore, lowestIndices, lowestCount, targetPos, scoreAtTarget);
+    } else if (queryLength <= 192) {
+        return bitVectorDamerauOptimized<3>(queryLength, reference, referenceLength, Eq,
+            zeroIndices, zeroCount, lowestScore, lowestIndices, lowestCount, targetPos, scoreAtTarget);
+    } else {
+        return bitVectorDamerauOptimized<4>(queryLength, reference, referenceLength, Eq,
+            zeroIndices, zeroCount, lowestScore, lowestIndices, lowestCount, targetPos, scoreAtTarget);
+    }
 }
 
 // ============================================================================
@@ -270,6 +339,9 @@ void collectLowestIndicesKernel(
     int q = globalIdx / numChunks;
     int c = globalIdx % numChunks;
     int tid = threadIdx.x;
+    
+    // BOUNDS CHECK: Ensure query index is valid
+    if (q < 0 || q >= numQueries) return;
 
     for (int i = tid; i < 256; i += blockDim.x) {
         sharedEq[i] = d_EqQueries[(long long)q * 256LL + i];

@@ -11,7 +11,7 @@
 #include <string.h>
 
 #define MAX_LINE_LENGTH (1 << 14)  // 16KB per line
-#define MAX_SEQ_LENGTH (1 << 28)   // 268MB max sequence length
+#define MAX_SEQ_LENGTH (1 << 29)   // 536MB max sequence length (supports up to 500M files)
 
 // ============================================================================
 // FILE READING

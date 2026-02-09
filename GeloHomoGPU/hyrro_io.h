@@ -50,7 +50,7 @@ char* read_file_into_string(const char* filename) {
 }
 
 // ============================================================================
-// PARSE FASTA FILE INTO ARRAY OF SEQUENCES
+// PARSE FASTA FILE INTO ARRAY OF SEQUENCES (OPTIMIZED)
 // ============================================================================
 char** parse_fasta_file(const char *filename, int *num_sequences) {
     FILE *file = fopen(filename, "r");
@@ -63,23 +63,24 @@ char** parse_fasta_file(const char *filename, int *num_sequences) {
     int seq_count = 0;
     char *current_seq = NULL;
     size_t current_seq_len = 0;
+    size_t current_seq_capacity = 0;
     char line[MAX_LINE_LENGTH];
     
     while (fgets(line, sizeof(line), file)) {
         if (line[0] == '>') {
             // New sequence header
-            if (current_seq != NULL) {
-                if (current_seq_len > 0) {
-                    sequences = (char**)realloc(sequences, (seq_count + 1) * sizeof(char*));
-                    sequences[seq_count] = (char*)malloc(current_seq_len + 1);
-                    memcpy(sequences[seq_count], current_seq, current_seq_len);
-                    sequences[seq_count][current_seq_len] = '\0';
-                    seq_count++;
-                }
-                free(current_seq);
-                current_seq = NULL;
-                current_seq_len = 0;
+            if (current_seq != NULL && current_seq_len > 0) {
+                sequences = (char**)realloc(sequences, (seq_count + 1) * sizeof(char*));
+                sequences[seq_count] = (char*)malloc(current_seq_len + 1);
+                memcpy(sequences[seq_count], current_seq, current_seq_len);
+                sequences[seq_count][current_seq_len] = '\0';
+                seq_count++;
             }
+            // Reset for new sequence - pre-allocate 256MB
+            if (current_seq) free(current_seq);
+            current_seq_capacity = MAX_IO_LENGTH;
+            current_seq = (char*)malloc(current_seq_capacity);
+            current_seq_len = 0;
         } else {
             // Sequence line
             size_t line_len = strlen(line);
@@ -87,15 +88,12 @@ char** parse_fasta_file(const char *filename, int *num_sequences) {
                 line_len--;
             }
             
-            if (current_seq_len + line_len > MAX_IO_LENGTH) {
-                line_len = MAX_IO_LENGTH - current_seq_len;
-            }
-            
-            if (line_len > 0) {
-                current_seq = (char*)realloc(current_seq, current_seq_len + line_len + 1);
+            if (line_len > 0 && current_seq != NULL) {
+                if (current_seq_len + line_len > MAX_IO_LENGTH) {
+                    line_len = MAX_IO_LENGTH - current_seq_len;
+                }
                 memcpy(current_seq + current_seq_len, line, line_len);
                 current_seq_len += line_len;
-                current_seq[current_seq_len] = '\0';
             }
         }
     }
@@ -107,9 +105,9 @@ char** parse_fasta_file(const char *filename, int *num_sequences) {
         memcpy(sequences[seq_count], current_seq, current_seq_len);
         sequences[seq_count][current_seq_len] = '\0';
         seq_count++;
-        free(current_seq);
     }
     
+    if (current_seq) free(current_seq);
     fclose(file);
     *num_sequences = seq_count;
     return sequences;

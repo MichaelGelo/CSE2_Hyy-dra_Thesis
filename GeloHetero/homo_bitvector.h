@@ -163,16 +163,23 @@ void bvMaskTop(bv_t *v, int m) {
 
     int lastWord = (m - 1) / 64;
     int lastBit = (m - 1) % 64;
-    uint64_t lastMask = (lastBit == 63) ? ~0ULL : ((1ULL << (lastBit + 1)) - 1ULL);
-
-    v->w[lastWord] &= lastMask;
-    #ifdef __CUDA_ARCH__
-    #pragma unroll
-    #endif
-    for (int i = lastWord + 1; i < BV_WORDS; ++i) {
-        v->w[i] = 0ULL;
+    
+    // Create mask for the last word
+    uint64_t lastMask;
+    if (lastBit == 63) {
+        lastMask = ~0ULL;
+    } else {
+        lastMask = (1ULL << (lastBit + 1)) - 1ULL;
     }
-}
+    
+    // Only apply mask if bits need to be cleared
+    if (lastBit < 63) {
+        v->w[lastWord] &= lastMask;
+    }
+    
+    // Clear all words after the last word
+    #ifdef __CUDA_ARCH__
+    #pragma unroll 4
 
 // ============================================================================
 // EQ TABLE CONSTRUCTION

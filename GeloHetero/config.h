@@ -11,7 +11,7 @@
 // Input files for queries and references
 // ============================================================================
 #define QUERY_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/que1_256.fasta"
-#define REFERENCE_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/StiffBrome.fasta"
+#define REFERENCE_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/Human.fasta"
 #define FPGA_OUTPUT_DIR "./fpga_splits/"
 
 // ============================================================================
@@ -61,8 +61,8 @@
 // ADAPTIVE SCHEDULING PARAMETERS
 // Controls GPU/FPGA workload distribution
 // ============================================================================
-#define GPU_SPEED_RATIO  0.5f           // Initial GPU workload ratio (0.0-1.0)
-#define FPGA_SPEED_RATIO 0.5f           // Initial FPGA workload ratio (0.0-1.0)
+#define GPU_SPEED_RATIO  0.7f         // Initial GPU workload ratio (0.0-1.0)
+#define FPGA_SPEED_RATIO 0.3f          // Initial FPGA workload ratio (0.0-1.0)
 
 #define MIN_GPU_RATIO 0.05f             // Minimum GPU ratio (always do some GPU work)
 #define MAX_GPU_RATIO 0.95f             // Maximum GPU ratio (always do some FPGA work)
@@ -78,7 +78,7 @@
 // FILE I/O LIMITS
 // Maximum sizes for file reading and parsing
 // ============================================================================
-#define MAX_FILE_LENGTH (1 << 28)       // 268 MB max file size
+#define MAX_FILE_LENGTH (1 << 29)       // 536 MB max file size (supports up to 500M files)
 #define MAX_LINE_LENGTH (1 << 14)       // 16 KB max line length in FASTA
 
 #endif // CONFIG_H

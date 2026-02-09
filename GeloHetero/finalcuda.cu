@@ -125,7 +125,7 @@ void* run_hyyro_gpu(void* args) {
     int total_pairs = num_queries * num_chunks;
     int blocks = total_pairs;  // One block per query-chunk pair
     int threads = THREADS_PER_BLOCK;
-    size_t shared_bytes = 256 * sizeof(bv_t);
+    size_t shared_bytes = THREADS_PER_BLOCK * sizeof(bv_t);
 
     printf("[GPU] Launching kernel: %d blocks × %d threads (total: %d pairs)\n",
            blocks, threads, total_pairs);
@@ -152,6 +152,13 @@ void* run_hyyro_gpu(void* args) {
             gpu_buffers.d_lowestIndicesOrig, gpu_buffers.d_lastScoreOrig
         );
         CUDA_CHECK(cudaGetLastError());
+
+        CUDA_CHECK(cudaEventRecord(ev_end));
+        CUDA_CHECK(cudaEventSynchronize(ev_end));
+        
+        float iter_ms = 0.0f;
+        CUDA_CHECK(cudaEventElapsedTime(&iter_ms, ev_start, ev_end));
+        total_ms += iter_ms;
         
         // Pass 2: Collect all positions with lowest score
         collectLowestIndicesKernel<<<blocks, threads, shared_bytes>>>(
@@ -165,12 +172,6 @@ void* run_hyyro_gpu(void* args) {
         );
         CUDA_CHECK(cudaGetLastError());
         
-        CUDA_CHECK(cudaEventRecord(ev_end));
-        CUDA_CHECK(cudaEventSynchronize(ev_end));
-        
-        float iter_ms = 0.0f;
-        CUDA_CHECK(cudaEventElapsedTime(&iter_ms, ev_start, ev_end));
-        total_ms += iter_ms;
     }
 
     CUDA_CHECK(cudaEventDestroy(ev_start));
@@ -437,7 +438,14 @@ int main() {
         for (int q = 0; q < num_queries; q++){
             long long idx = (long long)q * num_orig_refs + r;
 
-            printf("\n--- Query %d vs Reference %d ---\n", q+1, r+1);
+            // Calculate and print reference length information
+            int orig_ref_len = (int)strlen(orig_refs[r]);
+            int gpu_len = all_gpu_ref_lens[r];
+            int fpga_len = orig_ref_len - gpu_len + (query_len - 1);  // FPGA portion with overlap
+            int query_length = (int)strlen(query_seqs[q]);
+            
+            printf("\nPair: Q%d(%d) Vs R%d(%d)\n", q+1, query_length, r+1, orig_ref_len);
+            printf("Reference length: %d (GPU: %d, FPGA: %d)\n", orig_ref_len, gpu_len, fpga_len);
 
             long long gpu_idx = q;  // GPU processes one ref at a time
 
@@ -523,32 +531,59 @@ int main() {
 
             // Count exact matches (score = 0)
             int hit_count = 0;
+            int* hit_indices = NULL;
             if (merged_lowest_scores[idx] == 0) {
                 hit_count = merged_index_counts[idx];
+                hit_indices = merged_lowest_indices[idx];
             }
 
-            printf("Lowest: %d | Hits: %d | Positions: %d | Last: %d\n", 
-                   merged_lowest_scores[idx], hit_count, 
-                   merged_index_counts[idx], last_score);
-
-            if (merged_index_counts[idx] > 0 && merged_index_counts[idx] <= 20) {
-                printf("Positions: [");
+            // Print Number of Hits
+            printf("Number of Hits: %d\n", hit_count);
+            
+            // Print Hit Indexes
+            printf("Hit Indexes: ");
+            if (hit_count == 0) {
+                printf("N/A\n");
+            } else if (hit_count <= 20) {
+                printf("[");
+                for (int i = 0; i < hit_count; i++) {
+                    if (i > 0) printf(", ");
+                    printf("%d", hit_indices[i]);
+                }
+                printf("]\n");
+            } else {
+                printf("[%d, %d, ... %d positions total]\n",
+                       hit_indices[0], hit_indices[1], hit_count);
+            }
+            
+            // Print Lowest Score
+            printf("Lowest Score: %d\n", merged_lowest_scores[idx]);
+            
+            // Print Lowest Score Indexes
+            printf("Lowest Score Indexes: ");
+            if (merged_index_counts[idx] == 0) {
+                printf("N/A\n");
+            } else if (merged_index_counts[idx] <= 20) {
+                printf("[");
                 for (int i = 0; i < merged_index_counts[idx]; i++) {
                     if (i > 0) printf(", ");
                     printf("%d", merged_lowest_indices[idx][i]);
                 }
                 printf("]\n");
-            } else if (merged_index_counts[idx] > 20) {
-                printf("Positions: [%d, %d, ... %d positions total]\n",
-                       merged_lowest_indices[idx][0], 
+            } else {
+                printf("[%d, %d, ... %d positions total]\n",
+                       merged_lowest_indices[idx][0],
                        merged_lowest_indices[idx][1],
                        merged_index_counts[idx]);
             }
+            
+            // Print Last Score
+            printf("Last Score: %d\n", last_score);
         }
     }
 
     printf("\n===== SUMMARY =====\n");
-    printf("Total GPU: %.4fs | Total FPGA: %.4fs\n", total_gpu_time, total_fpga_time);
+    printf("Total GPU: %.4f s | Total FPGA: %.4f s\n", total_gpu_time, total_fpga_time);
     printf("Final ratio - GPU: %.3f | FPGA: %.3f\n", gpu_ratio, fpga_ratio);
     printf("===================\n");
 

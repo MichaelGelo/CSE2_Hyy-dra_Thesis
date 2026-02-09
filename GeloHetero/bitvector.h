@@ -141,6 +141,33 @@ int bvTestTop(const bv_t* v, int queryLength) {
     return ((v->w[idx] >> bit) & 1ULL) ? 1 : 0;
 }
 
+// Fast check using pre-computed index and mask
+static __forceinline__ __host__ __device__
+int bvTestBitFast(const bv_t* v, int wordIdx, uint64_t bitMask) {
+    return (v->w[wordIdx] & bitMask) ? 1 : 0;
+}
+
+// Create a static mask where valid bits are 1 and invalid bits are 0
+static __forceinline__ __host__ __device__
+void bvCreateMask(bv_t* out, int m) {
+    bvClear(out);
+    if (m <= 0) return;
+
+    int lastWord = (m - 1) / 64;
+    int lastBit = (m - 1) % 64;
+
+    // Set all full words to 1s
+    for (int i = 0; i < lastWord; ++i) {
+        out->w[i] = ~0ULL;
+    }
+
+    // Set the partial word
+    uint64_t lastMask = (lastBit == 63) ? ~0ULL : ((1ULL << (lastBit + 1)) - 1ULL);
+    out->w[lastWord] = lastMask;
+
+    // Remaining words are already 0 from bvClear
+}
+
 static __forceinline__ __host__ __device__ 
 uint64_t bvAdd(bv_t* out, const bv_t* a, const bv_t* b) {
     uint64_t carry = 0ULL;
@@ -159,18 +186,34 @@ uint64_t bvAdd(bv_t* out, const bv_t* a, const bv_t* b) {
 
 static __forceinline__ __host__ __device__ 
 void bvMaskTop(bv_t *v, int m) {
+    // OPTIMIZATION: If query uses all words, no masking needed
     if (m >= 64 * BV_WORDS) return;
     
     int lastWord = (m - 1) / 64;
-    int lastBit = (m - 1) % 64;
-    uint64_t lastMask = (lastBit == 63) ? ~0ULL : ((1ULL << (lastBit + 1)) - 1ULL);
     
-    v->w[lastWord] &= lastMask;
-    #ifdef __CUDA_ARCH__
-    #pragma unroll
-    #endif
-    for (int i = lastWord + 1; i < BV_WORDS; ++i) {
-        v->w[i] = 0ULL;
+    // Create mask for the last word
+    int lastBit = (m - 1) % 64;
+    uint64_t lastMask;
+    if (lastBit == 63) {
+        lastMask = ~0ULL;
+    } else {
+        lastMask = (1ULL << (lastBit + 1)) - 1ULL;
+    }
+    
+    // Only apply mask if last word needs truncation
+    if (lastBit < 63) {
+        v->w[lastWord] &= lastMask;
+    }
+    
+    // Clear words AFTER last word using optimized loop
+    // Only execute this if there are actually words to clear
+    if (lastWord < BV_WORDS - 1) {
+        #ifdef __CUDA_ARCH__
+        #pragma unroll
+        #endif
+        for (int i = lastWord + 1; i < BV_WORDS; ++i) {
+            v->w[i] = 0ULL;
+        }
     }
 }
 
