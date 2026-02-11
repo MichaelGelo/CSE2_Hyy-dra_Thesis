@@ -84,6 +84,8 @@ static inline PartitionedRefs partition_references(
         if (orig_ref_lens[i] > partition_threshold) {
             // Calculate number of chunks for this reference
             int nch = (orig_ref_lens[i] + chunk_size - 1) / chunk_size;
+            // Cap at MAX_BLOCKS to avoid GPU limits
+            if (nch > MAX_BLOCKS) nch = MAX_BLOCKS;
             estimated_chunks += nch;
         } else {
             // Small reference = single chunk
@@ -112,6 +114,8 @@ static inline PartitionedRefs partition_references(
         if (rlen > partition_threshold) {
             // === Partition this reference into chunks with overlap ===
             int nch = (rlen + chunk_size - 1) / chunk_size;
+            // Cap at MAX_BLOCKS to avoid GPU limits
+            if (nch > MAX_BLOCKS) nch = MAX_BLOCKS;
             
             for (int c = 0; c < nch; ++c) {
                 int start = c * chunk_size;

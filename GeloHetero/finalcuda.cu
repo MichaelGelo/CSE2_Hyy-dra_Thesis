@@ -53,22 +53,29 @@ void* run_hyyro_gpu(void* args) {
     char** query_seqs = gpu_args->query_seqs;
     char** orig_refs = gpu_args->orig_refs;
 
-    printf("[GPU] Starting computation (Chunk: %d, Threshold: %d, Threads: %d)\n", 
-           CHUNK_SIZE, PARTITION_THRESHOLD, THREADS_PER_BLOCK);
-
     // ========== Prepare reference metadata ==========
     int* orig_ref_lens = (int*)malloc(num_orig_refs * sizeof(int));
     for (int i = 0; i < num_orig_refs; ++i) {
         orig_ref_lens[i] = (int)strlen(orig_refs[i]);
     }
 
+    // ========== Compute optimal partitioning strategy ==========
+    int chunk_size, partition_threshold;
+    compute_partitioning_strategy(
+        num_queries, num_orig_refs, orig_ref_lens,
+        &chunk_size, &partition_threshold);
+
+    printf("[GPU] Starting computation (Dynamic Chunk: %d, Threshold: %d, Threads: %d)\n", 
+           chunk_size, partition_threshold, THREADS_PER_BLOCK);
+
     // ========== Partition references into chunks ==========
     int qlen0 = (int)strlen(query_seqs[0]);
     int overlap = qlen0 - 1;  // Standard overlap for pattern matching
 
+    // Use computed dynamic chunk size for fine-grained parallelism
     PartitionedRefs part_refs = partition_references(
         orig_refs, orig_ref_lens, num_orig_refs,
-        overlap, CHUNK_SIZE, PARTITION_THRESHOLD
+        overlap, chunk_size, partition_threshold
     );
 
     int num_chunks = part_refs.num_chunks;
@@ -124,6 +131,11 @@ void* run_hyyro_gpu(void* args) {
     // ========== Launch Damerau-Levenshtein kernel (two-pass approach) ==========
     int total_pairs = num_queries * num_chunks;
     int blocks = total_pairs;  // One block per query-chunk pair
+    // Cap blocks at MAX_BLOCKS to respect GPU hardware limits
+    if (blocks > MAX_BLOCKS) {
+        fprintf(stderr, "[GPU] WARNING: Capping blocks from %d to %d (GPU limit)\n", blocks, MAX_BLOCKS);
+        blocks = MAX_BLOCKS;
+    }
     int threads = THREADS_PER_BLOCK;
     size_t shared_bytes = THREADS_PER_BLOCK * sizeof(bv_t);
 
@@ -379,33 +391,62 @@ int main() {
                ref_idx + 1, num_orig_refs, gpu_ratio, fpga_ratio);
 
         // Split reference
+        int ref_len = (int)strlen(orig_refs[ref_idx]);
         split_reference_for_fpga_gpu(orig_refs[ref_idx], query_len,
                                     &all_gpu_refs[ref_idx],
                                     &all_gpu_ref_lens[ref_idx],
                                     ref_idx,
                                     gpu_ratio);
 
-        // Start GPU thread
-        GPUArgs gpu_args;
-        init_gpu_args(&gpu_args);
-        gpu_args.num_queries = num_queries;
-        gpu_args.num_orig_refs = 1;
-        gpu_args.query_seqs = query_seqs;
-        gpu_args.orig_refs = &all_gpu_refs[ref_idx];
-
-        pthread_t gpu_thread;
-        if (pthread_create(&gpu_thread, NULL, run_hyyro_gpu, &gpu_args) != 0) {
-            fprintf(stderr, "ERROR: failed to create GPU thread\n");
-            return EXIT_FAILURE;
-        }
-
-        // Run FPGA (blocking)
+        double gpu_time = 0.0;
         double fpga_time = 0.0;
-        FPGAResult* fpga_results = send_and_run_fpga_single_ref(num_queries, ref_idx, &fpga_time);
+        FPGAResult* fpga_results = NULL;
 
-        // Wait for GPU
-        pthread_join(gpu_thread, NULL);
-        double gpu_time = gpu_args.avg_execution_time;
+        // Check if reference is large enough for heterogeneous processing
+        if (ref_len >= MIN_REF_LENGTH_FOR_FPGA) {
+            // Large reference: use both GPU and FPGA
+            
+            // Start GPU thread
+            GPUArgs gpu_args;
+            init_gpu_args(&gpu_args);
+            gpu_args.num_queries = num_queries;
+            gpu_args.num_orig_refs = 1;
+            gpu_args.query_seqs = query_seqs;
+            gpu_args.orig_refs = &all_gpu_refs[ref_idx];
+
+            pthread_t gpu_thread;
+            if (pthread_create(&gpu_thread, NULL, run_hyyro_gpu, &gpu_args) != 0) {
+                fprintf(stderr, "ERROR: failed to create GPU thread\n");
+                return EXIT_FAILURE;
+            }
+
+            // Run FPGA (blocking)
+            fpga_results = send_and_run_fpga_single_ref(num_queries, ref_idx, &fpga_time);
+
+            // Wait for GPU
+            pthread_join(gpu_thread, NULL);
+            gpu_time = gpu_args.avg_execution_time;
+            
+            // Store GPU results
+            all_gpu_results[ref_idx] = gpu_args;
+        } else {
+            // Small reference: GPU only (will partition into parallel chunks)
+            printf("[FPGA] Skipped (reference too small, GPU will use parallel chunks)\n");
+            
+            GPUArgs gpu_args;
+            init_gpu_args(&gpu_args);
+            gpu_args.num_queries = num_queries;
+            gpu_args.num_orig_refs = 1;
+            gpu_args.query_seqs = query_seqs;
+            gpu_args.orig_refs = &all_gpu_refs[ref_idx];
+            
+            // Run GPU directly (no thread needed for small references)
+            run_hyyro_gpu(&gpu_args);
+            gpu_time = gpu_args.avg_execution_time;
+            
+            // Store GPU results
+            all_gpu_results[ref_idx] = gpu_args;
+        }
 
         printf("[Timing] GPU: %.4fs | FPGA: %.4fs\n", gpu_time, fpga_time);
 
@@ -420,8 +461,7 @@ int main() {
         gpu_ratio = wait_for_ratio_thread(ratio_thread, &ratio_args);
         fpga_ratio = 1.0f - gpu_ratio;
 
-        // Store results
-        all_gpu_results[ref_idx] = gpu_args;
+        // Store FPGA results
         all_fpga_results[ref_idx] = fpga_results;
     }
 
@@ -441,25 +481,40 @@ int main() {
             // Calculate and print reference length information
             int orig_ref_len = (int)strlen(orig_refs[r]);
             int gpu_len = all_gpu_ref_lens[r];
-            int fpga_len = orig_ref_len - gpu_len + (query_len - 1);  // FPGA portion with overlap
+            int fpga_len = 0;
+            if (all_fpga_results[r] != NULL) {
+                fpga_len = orig_ref_len - gpu_len + (query_len - 1);  // FPGA portion with overlap
+            }
             int query_length = (int)strlen(query_seqs[q]);
             
             printf("\nPair: Q%d(%d) Vs R%d(%d)\n", q+1, query_length, r+1, orig_ref_len);
-            printf("Reference length: %d (GPU: %d, FPGA: %d)\n", orig_ref_len, gpu_len, fpga_len);
+            if (all_fpga_results[r] != NULL) {
+                printf("Reference length: %d (GPU: %d, FPGA: %d)\n", orig_ref_len, gpu_len, fpga_len);
+            } else {
+                printf("Reference length: %d (GPU-only mode, parallel chunks)\n", orig_ref_len);
+            }
 
             long long gpu_idx = q;  // GPU processes one ref at a time
 
+            // Get GPU results
             int lowest_gpu = all_gpu_results[r].output_lowest_scores[gpu_idx];
             int gpu_lowest_count = all_gpu_results[r].output_lowest_counts[gpu_idx];
 
-            int lowest_fpga = all_fpga_results[r][q].lowest_score;
-            int fpga_lowest_count = all_fpga_results[r][q].num_lowest_indexes;
-
-            // CRITICAL FIX: Use FPGA's final_score as the true last score
-            // because FPGA processes to the actual end of the reference
-            int last_score = all_fpga_results[r][q].final_score;
-
-            // printf("GPU: %d (%d), FPGA: %d (%d)\n", lowest_gpu, gpu_lowest_count, lowest_fpga, fpga_lowest_count);
+            // Check if FPGA was used for this reference (only for large references)
+            int lowest_fpga = -1;
+            int fpga_lowest_count = 0;
+            int last_score = -1;
+            
+            if (all_fpga_results[r] != NULL) {
+                // Heterogeneous mode: FPGA has results
+                lowest_fpga = all_fpga_results[r][q].lowest_score;
+                fpga_lowest_count = all_fpga_results[r][q].num_lowest_indexes;
+                // Use FPGA's final_score as the true last score
+                last_score = all_fpga_results[r][q].final_score;
+            } else {
+                // GPU-only mode: use GPU's last score
+                last_score = all_gpu_results[r].output_last_scores[gpu_idx];
+            }
 
             // ========== Merge lowest scores ==========
             int final_merged_lowest_score = -1;
@@ -501,6 +556,7 @@ int main() {
 
                 // Add FPGA indices with proper offset if they match
                 if (lowest_fpga == final_merged_lowest_score &&
+                    all_fpga_results[r] != NULL &&
                     all_fpga_results[r][q].lowest_indexes != NULL) {
                     int gpu_len = all_gpu_ref_lens[r];
                     int fpga_offset = gpu_len - query_len + 1;

@@ -132,6 +132,26 @@ static void split_reference_for_fpga_gpu(
 {
     int total_len = (int)strlen(sequence);
     
+    // If reference is small, let GPU handle it entirely (no FPGA overhead)
+    if (total_len < MIN_REF_LENGTH_FOR_FPGA) {
+        printf("[SPLIT] Reference too small (%d < %d), GPU-only mode (will partition for parallel processing)\n", 
+               total_len, MIN_REF_LENGTH_FOR_FPGA);
+        
+        // Give entire reference to GPU - it will partition internally
+        char *gpu_buf = (char*)malloc((size_t)total_len + 1);
+        if (!gpu_buf) {
+            fprintf(stderr, "Error: malloc failed for GPU reference\n");
+            *gpu_ref_out = NULL;
+            *gpu_len_out = 0;
+            return;
+        }
+        memcpy(gpu_buf, sequence, (size_t)total_len);
+        gpu_buf[total_len] = '\0';
+        *gpu_ref_out = gpu_buf;
+        *gpu_len_out = total_len;
+        return;  // Skip FPGA split file creation
+    }
+    
     // Calculate GPU portion length
     int gpu_len = (int)(total_len * gpu_speed_ratio);
     if (gpu_len > total_len) {
