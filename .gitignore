@@ -1,2 +1,4 @@
 # Ignore the entire Resources folder
 Resources/
+hetero_mem (fpga)/
+FPGA_MEM/

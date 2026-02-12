@@ -10,8 +10,8 @@
 // FILE PATHS
 // Input files for queries and references
 // ============================================================================
-#define QUERY_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/que1_256.fasta"
-#define REFERENCE_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/Cyanobacteria.fasta"
+#define QUERY_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/que1_192.fasta"
+#define REFERENCE_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/Human.fasta"
 #define FPGA_OUTPUT_DIR "./fpga_splits/"
 
 // ============================================================================

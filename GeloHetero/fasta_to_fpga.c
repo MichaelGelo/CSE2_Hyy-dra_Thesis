@@ -10,7 +10,7 @@
 #include <ctype.h>
 
 #define MAX_SEQUENCES 100
-#define MAX_SEQ_LEN 10000000 // 10MB per sequence
+#define MAX_SEQ_LEN 1073741824 // 10MB per sequence
 #define BUFFER_SIZE 65536
 
 typedef struct
@@ -219,7 +219,7 @@ int main(int argc, char *argv[])
    //#define QUERY_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/que1_256.fasta"
    //#define REFERENCE_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/Human.fasta"
     const char *query_file = "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/que1_256.fasta";
-    const char *ref_file = "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/Platypus.fasta";
+    const char *ref_file = "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/StiffBrome.fasta";
     const char *server_ip = "192.168.2.99"; // PYNQ board IP
     int port = 5000;
 
