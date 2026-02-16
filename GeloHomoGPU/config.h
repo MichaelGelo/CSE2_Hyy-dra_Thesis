@@ -13,8 +13,8 @@
 // ============================================================================
 // FILE PATHS
 // ============================================================================
-#define QUERY_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/que1_192.fasta"
-#define REFERENCE_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/Cyanobacteria.fasta"
+#define QUERY_FILE "/home/dlsu-cse/Downloads/Stress Test/stestque_256.fasta"
+#define REFERENCE_FILE "/home/dlsu-cse/Downloads/Stress Test/stestref_500M.fasta"
 
 // ============================================================================
 // ALGORITHM LIMITS

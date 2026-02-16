@@ -218,8 +218,8 @@ int main(int argc, char *argv[])
 
    //#define QUERY_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/que1_256.fasta"
    //#define REFERENCE_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/Human.fasta"
-    const char *query_file = "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/que1_256.fasta";
-    const char *ref_file = "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/StiffBrome.fasta";
+    const char *query_file = "/home/dlsu-cse/Downloads/Stress Test/stestque_256.fasta";
+    const char *ref_file = "/home/dlsu-cse/Downloads/Stress Test/stestref_10M.fasta";
     const char *server_ip = "192.168.2.99"; // PYNQ board IP
     int port = 5000;
 

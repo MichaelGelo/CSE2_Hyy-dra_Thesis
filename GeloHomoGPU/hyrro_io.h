@@ -8,8 +8,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MAX_IO_LENGTH (1 << 28)  // 268.4MB max file size
+#define MAX_IO_LENGTH (1 << 29)  // 536.8MB max file size
 #define MAX_LINE_LENGTH (1 << 14)
+
 
 #ifdef __cplusplus
 extern "C" {

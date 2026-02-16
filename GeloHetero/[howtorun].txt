@@ -3,9 +3,9 @@ cd "d:\download\College Life\Thesis\CSE2_Hyy-dra_Thesis\Final_GPU\" && gcc check
 
 gcc [HyDam_checker].c -o HyDam_checker &&./HyDam_checker
 
+gcc -o fasta_to_fpga fasta_to_fpga.c -std=c99 -Wall -Wextra && ./fasta_to_fpga
 
-
-nvcc -O3 -diag-suppress=177 -arch=sm_75 cpu_utilc.c finalcuda.cu -o finalcuda && ./finalcuda
+nvcc -O3 -diag-suppress=177 -arch=sm_75 cpu_utils.c finalcuda.cu -o finalcuda && ./finalcuda
 
 
 

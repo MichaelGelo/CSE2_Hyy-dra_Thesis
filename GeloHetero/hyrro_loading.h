@@ -152,10 +152,27 @@ static void split_reference_for_fpga_gpu(
         return;  // Skip FPGA split file creation
     }
     
-    // Calculate GPU portion length
+    // Calculate initial GPU portion length based on ratio
     int gpu_len = (int)(total_len * gpu_speed_ratio);
     if (gpu_len > total_len) {
         gpu_len = total_len;
+    }
+
+    // Calculate initial FPGA portion length
+    int fpga_len = total_len - gpu_len;
+    
+    // Apply FPGA hardware limit cap
+    if (fpga_len > MAX_FPGA_REF_LENGTH) {
+        printf("[WARNING] FPGA allocation (%d) exceeds hardware limit (%d)\n", 
+               fpga_len, MAX_FPGA_REF_LENGTH);
+        printf("[WARNING] Capping FPGA at %d, redistributing overflow to GPU\n", 
+               MAX_FPGA_REF_LENGTH);
+        
+        int overflow = fpga_len - MAX_FPGA_REF_LENGTH;
+        fpga_len = MAX_FPGA_REF_LENGTH;
+        gpu_len += overflow;
+        
+        printf("[WARNING] New allocation -> GPU: %d, FPGA: %d\n", gpu_len, fpga_len);
     }
 
     // Calculate FPGA start with overlap
@@ -169,8 +186,8 @@ static void split_reference_for_fpga_gpu(
     }
 
     printf("[SPLIT] Query length: %d, Overlap: %d\n", query_len, query_len - 1);
-    printf("[SPLIT] Reference total: %d, GPU portion: %d, FPGA start: %d\n", 
-           total_len, gpu_len, fpga_start);
+    printf("[SPLIT] Reference total: %d, GPU portion: %d, FPGA start: %d (FPGA length: %d)\n", 
+           total_len, gpu_len, fpga_start, total_len - fpga_start);
 
     // Save FPGA portion to file
     save_fpga_split_to_fasta(sequence, fpga_start, ref_no);
