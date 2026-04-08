@@ -1,0 +1,1 @@
+nvcc -O3 -diag-suppress=177 -arch=sm_75 homocuda.cu -o homocuda && ./homocuda
