@@ -1,0 +1,1 @@
+nvcc -O3 -diag-suppress=177 -arch=sm_75 cpu_utils.c finalcuda.cu -o finalcuda && ./finalcuda
