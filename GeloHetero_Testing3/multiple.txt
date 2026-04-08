@@ -1,0 +1,1323 @@
+
+=== Heterogeneous GPU-FPGA Damerau-Levenshtein ===
+Loading data...
+Loaded 10 queries from /home/dlsu-cse/Downloads/Stress Test/stestm10que_256.fasta
+FPGA query saved: ./fpga_splits/fpga_query0.fasta (length=256)
+FPGA query saved: ./fpga_splits/fpga_query1.fasta (length=256)
+FPGA query saved: ./fpga_splits/fpga_query2.fasta (length=256)
+FPGA query saved: ./fpga_splits/fpga_query3.fasta (length=256)
+FPGA query saved: ./fpga_splits/fpga_query4.fasta (length=256)
+FPGA query saved: ./fpga_splits/fpga_query5.fasta (length=256)
+FPGA query saved: ./fpga_splits/fpga_query6.fasta (length=256)
+FPGA query saved: ./fpga_splits/fpga_query7.fasta (length=256)
+FPGA query saved: ./fpga_splits/fpga_query8.fasta (length=256)
+FPGA query saved: ./fpga_splits/fpga_query9.fasta (length=256)
+Loaded 10 references from /home/dlsu-cse/Downloads/Stress Test/stestm10ref_10M.fasta
+Loaded: 10 queries, 10 references
+
+========================================================================================
+[Processing Reference 1/10] GPU: 0.700 | FPGA: 0.300
+[SPLIT] Query length: 256, Overlap: 255
+[SPLIT] Reference total: 10000000, GPU portion: 7000000, FPGA start: 6999745 (FPGA length: 3000255)
+FPGA split saved: ./fpga_splits/fpga_ref0.fasta (start=6999745, length=3000255)
+
+[FPGA] Processing 10 queries for Reference 0 via TCP
+[FPGA] MemFree before allocation: 46383900 kB
+[GPU] Starting computation (Dynamic Chunk: 90909, Threshold: 90909, Threads: 256)
+[GPU] Partitioned into 78 chunks
+[GPU] Query packing: length=256, aligned=256, slots=10, total=2.5 KB
+[GPU] Packed 78 chunks (6.7 MB, avg 87.9 KB/chunk)
+[GPU] Allocating memory: 7.0 MB (Eq:0.1 + Q:0.2 + R:6.7)
+[GPU] Details: numQueries=10, numChunks=78, numOrigRefs=1
+[GPU] totalPairChunks=780, totalOrigPairs=10
+[GPU] Launching kernel: 780 blocks × 256 threads (total: 780 pairs)
+[FPGA] Total sent: 2.86 MB in 0.1279 sec → 187.63 Mbps
+[FPGA] Q0: Score=120, Lowest=110 (count=1), Time=85.2ms
+[FPGA] MemFree before allocation: 46343536 kB
+[FPGA] Total sent: 2.86 MB in 0.1264 sec → 189.85 Mbps
+[FPGA] Q1: Score=130, Lowest=109 (count=2), Time=85.2ms
+[FPGA] MemFree before allocation: 46340704 kB
+[FPGA] Total sent: 2.86 MB in 0.1277 sec → 188.04 Mbps
+[FPGA] Q2: Score=126, Lowest=108 (count=2), Time=233.7ms
+[FPGA] MemFree before allocation: 46339696 kB
+[FPGA] Total sent: 2.86 MB in 0.1281 sec → 187.38 Mbps
+[FPGA] Q3: Score=126, Lowest=110 (count=3), Time=83.9ms
+[FPGA] MemFree before allocation: 46340704 kB
+[FPGA] Total sent: 2.86 MB in 0.1394 sec → 172.24 Mbps
+[FPGA] Q4: Score=129, Lowest=112 (count=6), Time=83.5ms
+[FPGA] MemFree before allocation: 46337696 kB
+[FPGA] Total sent: 2.86 MB in 0.1313 sec → 182.76 Mbps
+[FPGA] Q5: Score=122, Lowest=110 (count=2), Time=87.0ms
+[FPGA] MemFree before allocation: 46335024 kB
+[FPGA] Total sent: 2.86 MB in 0.1288 sec → 186.33 Mbps
+[FPGA] Q6: Score=130, Lowest=112 (count=6), Time=84.7ms
+[FPGA] MemFree before allocation: 46333472 kB
+[FPGA] Total sent: 2.86 MB in 0.1284 sec → 186.96 Mbps
+[GPU] Computation complete
+[FPGA] Q7: Score=127, Lowest=110 (count=1), Time=83.1ms
+[FPGA] MemFree before allocation: 46336744 kB
+[FPGA] Total sent: 2.86 MB in 0.1337 sec → 179.55 Mbps
+[FPGA] Q8: Score=130, Lowest=110 (count=1), Time=85.7ms
+[FPGA] MemFree before allocation: 46333908 kB
+[FPGA] Total sent: 2.86 MB in 0.1307 sec → 183.70 Mbps
+[FPGA] Q9: Score=129, Lowest=110 (count=6), Time=85.2ms
+=== FPGA Total Time for Ref 0: 0.997114 seconds ===
+[Timing] GPU: 0.7972s | FPGA: 0.9971s
+[Scheduler] Times: GPU=0.7972s, FPGA=0.9971s | Ratio: 0.700→0.741
+
+========================================================================================
+[Processing Reference 2/10] GPU: 0.741 | FPGA: 0.259
+[SPLIT] Query length: 256, Overlap: 255
+[SPLIT] Reference total: 10000000, GPU portion: 7414420, FPGA start: 7414165 (FPGA length: 2585835)
+FPGA split saved: ./fpga_splits/fpga_ref1.fasta (start=7414165, length=2585835)
+
+[FPGA] Processing 10 queries for Reference 1 via TCP
+[FPGA] MemFree before allocation: 46333608 kB
+[GPU] Starting computation (Dynamic Chunk: 96291, Threshold: 96291, Threads: 256)
+[GPU] Partitioned into 78 chunks
+[GPU] Query packing: length=256, aligned=256, slots=10, total=2.5 KB
+[GPU] Packed 78 chunks (7.1 MB, avg 93.1 KB/chunk)
+[GPU] Allocating memory: 7.4 MB (Eq:0.1 + Q:0.2 + R:7.1)
+[GPU] Details: numQueries=10, numChunks=78, numOrigRefs=1
+[GPU] totalPairChunks=780, totalOrigPairs=10
+[GPU] Launching kernel: 780 blocks × 256 threads (total: 780 pairs)
+[FPGA] Total sent: 2.47 MB in 0.1228 sec → 168.54 Mbps
+[FPGA] Q0: Score=128, Lowest=109 (count=2), Time=72.2ms
+[FPGA] MemFree before allocation: 46307872 kB
+[FPGA] Total sent: 2.47 MB in 0.1239 sec → 166.93 Mbps
+[FPGA] Q1: Score=130, Lowest=110 (count=1), Time=73.7ms
+[FPGA] MemFree before allocation: 46247768 kB
+[FPGA] Total sent: 2.47 MB in 0.1193 sec → 173.47 Mbps
+[FPGA] Q2: Score=123, Lowest=110 (count=1), Time=73.0ms
+[FPGA] MemFree before allocation: 46204432 kB
+[FPGA] Total sent: 2.47 MB in 0.1281 sec → 161.46 Mbps
+[FPGA] Q3: Score=124, Lowest=109 (count=2), Time=73.5ms
+[FPGA] MemFree before allocation: 46198604 kB
+[FPGA] Total sent: 2.47 MB in 0.1211 sec → 170.91 Mbps
+[FPGA] Q4: Score=134, Lowest=111 (count=1), Time=72.8ms
+[FPGA] MemFree before allocation: 46201420 kB
+[FPGA] Total sent: 2.47 MB in 0.1239 sec → 167.01 Mbps
+[FPGA] Q5: Score=135, Lowest=108 (count=3), Time=73.9ms
+[FPGA] MemFree before allocation: 46177184 kB
+[FPGA] Total sent: 2.47 MB in 0.1211 sec → 170.90 Mbps
+[FPGA] Q6: Score=133, Lowest=111 (count=4), Time=73.9ms
+[FPGA] MemFree before allocation: 46172324 kB
+[FPGA] Total sent: 2.47 MB in 0.1215 sec → 170.24 Mbps
+[FPGA] Q7: Score=126, Lowest=107 (count=1), Time=73.2ms
+[FPGA] MemFree before allocation: 46155000 kB
+[FPGA] Total sent: 2.47 MB in 0.1378 sec → 150.13 Mbps
+[GPU] Computation complete
+[FPGA] Q8: Score=131, Lowest=111 (count=2), Time=74.2ms
+[FPGA] MemFree before allocation: 46198572 kB
+[FPGA] Total sent: 2.47 MB in 0.1210 sec → 170.95 Mbps
+[FPGA] Q9: Score=129, Lowest=109 (count=2), Time=74.0ms
+=== FPGA Total Time for Ref 1: 0.734380 seconds ===
+[Timing] GPU: 0.8475s | FPGA: 0.7344s
+[Scheduler] Times: GPU=0.8475s, FPGA=0.7344s | Ratio: 0.741→0.716
+
+========================================================================================
+[Processing Reference 3/10] GPU: 0.716 | FPGA: 0.284
+[SPLIT] Query length: 256, Overlap: 255
+[SPLIT] Reference total: 10000000, GPU portion: 7158221, FPGA start: 7157966 (FPGA length: 2842034)
+FPGA split saved: ./fpga_splits/fpga_ref2.fasta (start=7157966, length=2842034)
+
+[FPGA] Processing 10 queries for Reference 2 via TCP
+[FPGA] MemFree before allocation: 46254596 kB
+[GPU] Starting computation (Dynamic Chunk: 92963, Threshold: 92963, Threads: 256)
+[GPU] Partitioned into 78 chunks
+[GPU] Query packing: length=256, aligned=256, slots=10, total=2.5 KB
+[GPU] Packed 78 chunks (6.8 MB, avg 89.9 KB/chunk)
+[GPU] Allocating memory: 7.1 MB (Eq:0.1 + Q:0.2 + R:6.8)
+[GPU] Details: numQueries=10, numChunks=78, numOrigRefs=1
+[GPU] totalPairChunks=780, totalOrigPairs=10
+[GPU] Launching kernel: 780 blocks × 256 threads (total: 780 pairs)
+[FPGA] Total sent: 2.71 MB in 0.1261 sec → 180.32 Mbps
+[FPGA] Q0: Score=129, Lowest=110 (count=7), Time=81.2ms
+[FPGA] MemFree before allocation: 46234640 kB
+[FPGA] Total sent: 2.71 MB in 0.1409 sec → 161.43 Mbps
+[FPGA] Q1: Score=131, Lowest=107 (count=3), Time=78.9ms
+[FPGA] MemFree before allocation: 46232744 kB
+[FPGA] Total sent: 2.71 MB in 0.1330 sec → 170.95 Mbps
+[FPGA] Q2: Score=129, Lowest=112 (count=12), Time=189.7ms
+[FPGA] MemFree before allocation: 46254540 kB
+[FPGA] Total sent: 2.71 MB in 0.1335 sec → 170.28 Mbps
+[FPGA] Q3: Score=122, Lowest=112 (count=1), Time=80.6ms
+[FPGA] MemFree before allocation: 46262604 kB
+[FPGA] Total sent: 2.71 MB in 0.1273 sec → 178.57 Mbps
+[FPGA] Q4: Score=130, Lowest=112 (count=1), Time=81.0ms
+[FPGA] MemFree before allocation: 46259816 kB
+[FPGA] Total sent: 2.71 MB in 0.1265 sec → 179.78 Mbps
+[FPGA] Q5: Score=132, Lowest=110 (count=4), Time=80.9ms
+[FPGA] MemFree before allocation: 46320548 kB
+[FPGA] Total sent: 2.71 MB in 0.1271 sec → 178.96 Mbps
+[FPGA] Q6: Score=125, Lowest=112 (count=8), Time=79.2ms
+[FPGA] MemFree before allocation: 46317848 kB
+[FPGA] Total sent: 2.71 MB in 0.1285 sec → 176.95 Mbps
+[GPU] Computation complete
+[FPGA] Q7: Score=125, Lowest=110 (count=3), Time=80.9ms
+[FPGA] MemFree before allocation: 46314412 kB
+[FPGA] Total sent: 2.71 MB in 0.1666 sec → 136.52 Mbps
+[FPGA] Q8: Score=126, Lowest=112 (count=7), Time=79.2ms
+[FPGA] MemFree before allocation: 46319940 kB
+[FPGA] Total sent: 2.71 MB in 0.1245 sec → 182.59 Mbps
+[FPGA] Q9: Score=128, Lowest=111 (count=8), Time=80.4ms
+=== FPGA Total Time for Ref 2: 0.912135 seconds ===
+[Timing] GPU: 0.8071s | FPGA: 0.9121s
+[Scheduler] Times: GPU=0.8071s, FPGA=0.9121s | Ratio: 0.716→0.738
+
+========================================================================================
+[Processing Reference 4/10] GPU: 0.738 | FPGA: 0.262
+[SPLIT] Query length: 256, Overlap: 255
+[SPLIT] Reference total: 10000000, GPU portion: 7384017, FPGA start: 7383762 (FPGA length: 2616238)
+FPGA split saved: ./fpga_splits/fpga_ref3.fasta (start=7383762, length=2616238)
+
+[FPGA] Processing 10 queries for Reference 3 via TCP
+[FPGA] MemFree before allocation: 46318672 kB
+[GPU] Starting computation (Dynamic Chunk: 95896, Threshold: 95896, Threads: 256)
+[GPU] Partitioned into 78 chunks
+[GPU] Query packing: length=256, aligned=256, slots=10, total=2.5 KB
+[GPU] Packed 78 chunks (7.1 MB, avg 92.7 KB/chunk)
+[GPU] Allocating memory: 7.3 MB (Eq:0.1 + Q:0.2 + R:7.1)
+[GPU] Details: numQueries=10, numChunks=78, numOrigRefs=1
+[GPU] totalPairChunks=780, totalOrigPairs=10
+[GPU] Launching kernel: 780 blocks × 256 threads (total: 780 pairs)
+[FPGA] Total sent: 2.50 MB in 0.1310 sec → 159.85 Mbps
+[FPGA] Q0: Score=124, Lowest=110 (count=5), Time=76.3ms
+[FPGA] MemFree before allocation: 46294912 kB
+[FPGA] Total sent: 2.50 MB in 0.1221 sec → 171.42 Mbps
+[FPGA] Q1: Score=124, Lowest=109 (count=1), Time=104.1ms
+[FPGA] MemFree before allocation: 46273728 kB
+[FPGA] Total sent: 2.50 MB in 0.1269 sec → 164.90 Mbps
+[FPGA] Q2: Score=127, Lowest=110 (count=3), Time=74.7ms
+[FPGA] MemFree before allocation: 46259308 kB
+[FPGA] Total sent: 2.50 MB in 0.1230 sec → 170.17 Mbps
+[FPGA] Q3: Score=128, Lowest=110 (count=1), Time=174.4ms
+[FPGA] MemFree before allocation: 46258724 kB
+[FPGA] Total sent: 2.50 MB in 0.1245 sec → 168.09 Mbps
+[FPGA] Q4: Score=129, Lowest=111 (count=1), Time=75.2ms
+[FPGA] MemFree before allocation: 46255692 kB
+[FPGA] Total sent: 2.50 MB in 0.1265 sec → 165.41 Mbps
+[FPGA] Q5: Score=129, Lowest=109 (count=3), Time=98.5ms
+[FPGA] MemFree before allocation: 46244008 kB
+[FPGA] Total sent: 2.50 MB in 0.1260 sec → 166.15 Mbps
+[FPGA] Q6: Score=128, Lowest=110 (count=1), Time=73.3ms
+[FPGA] MemFree before allocation: 46239544 kB
+[FPGA] Total sent: 2.50 MB in 0.1244 sec → 168.26 Mbps
+[GPU] Computation complete
+[FPGA] Q7: Score=132, Lowest=110 (count=3), Time=74.9ms
+[FPGA] MemFree before allocation: 46232028 kB
+[FPGA] Total sent: 2.50 MB in 0.1226 sec → 170.71 Mbps
+[FPGA] Q8: Score=128, Lowest=112 (count=4), Time=74.5ms
+[FPGA] MemFree before allocation: 46230760 kB
+[FPGA] Total sent: 2.50 MB in 0.1224 sec → 171.06 Mbps
+[FPGA] Q9: Score=125, Lowest=109 (count=5), Time=75.4ms
+=== FPGA Total Time for Ref 3: 0.901324 seconds ===
+[Timing] GPU: 0.8361s | FPGA: 0.9013s
+[Scheduler] Times: GPU=0.8361s, FPGA=0.9013s | Ratio: 0.738→0.753
+
+========================================================================================
+[Processing Reference 5/10] GPU: 0.753 | FPGA: 0.247
+[SPLIT] Query length: 256, Overlap: 255
+[SPLIT] Reference total: 10000000, GPU portion: 7525419, FPGA start: 7525164 (FPGA length: 2474836)
+FPGA split saved: ./fpga_splits/fpga_ref4.fasta (start=7525164, length=2474836)
+
+[FPGA] Processing 10 queries for Reference 4 via TCP
+[FPGA] MemFree before allocation: 46237328 kB
+[GPU] Starting computation (Dynamic Chunk: 97732, Threshold: 97732, Threads: 256)
+[GPU] Partitioned into 78 chunks
+[GPU] Query packing: length=256, aligned=256, slots=10, total=2.5 KB
+[GPU] Packed 78 chunks (7.2 MB, avg 94.5 KB/chunk)
+[GPU] Allocating memory: 7.5 MB (Eq:0.1 + Q:0.2 + R:7.2)
+[GPU] Details: numQueries=10, numChunks=78, numOrigRefs=1
+[GPU] totalPairChunks=780, totalOrigPairs=10
+[GPU] Launching kernel: 780 blocks × 256 threads (total: 780 pairs)
+[FPGA] Total sent: 2.36 MB in 0.1224 sec → 161.72 Mbps
+[FPGA] Q0: Score=127, Lowest=111 (count=8), Time=70.6ms
+[FPGA] MemFree before allocation: 46230856 kB
+[FPGA] Total sent: 2.36 MB in 0.1224 sec → 161.81 Mbps
+[FPGA] Q1: Score=128, Lowest=110 (count=3), Time=71.7ms
+[FPGA] MemFree before allocation: 46230840 kB
+[FPGA] Total sent: 2.36 MB in 0.1202 sec → 164.78 Mbps
+[FPGA] Q2: Score=127, Lowest=109 (count=3), Time=71.1ms
+[FPGA] MemFree before allocation: 46236096 kB
+[FPGA] Total sent: 2.36 MB in 0.1200 sec → 164.98 Mbps
+[FPGA] Q3: Score=127, Lowest=110 (count=1), Time=71.1ms
+[FPGA] MemFree before allocation: 46240244 kB
+[FPGA] Total sent: 2.36 MB in 0.1420 sec → 139.47 Mbps
+[FPGA] Q4: Score=129, Lowest=112 (count=1), Time=70.2ms
+[FPGA] MemFree before allocation: 46253104 kB
+[FPGA] Total sent: 2.36 MB in 0.1230 sec → 161.02 Mbps
+[FPGA] Q5: Score=130, Lowest=106 (count=2), Time=71.0ms
+[FPGA] MemFree before allocation: 46251244 kB
+[FPGA] Total sent: 2.36 MB in 0.1221 sec → 162.12 Mbps
+[FPGA] Q6: Score=127, Lowest=109 (count=2), Time=70.2ms
+[FPGA] MemFree before allocation: 46250748 kB
+[FPGA] Total sent: 2.36 MB in 0.1241 sec → 159.55 Mbps
+[GPU] Computation complete
+[FPGA] Q7: Score=128, Lowest=108 (count=3), Time=69.9ms
+[FPGA] MemFree before allocation: 46248456 kB
+[FPGA] Total sent: 2.36 MB in 0.1254 sec → 157.90 Mbps
+[FPGA] Q8: Score=131, Lowest=112 (count=6), Time=71.2ms
+[FPGA] MemFree before allocation: 46246700 kB
+[FPGA] Total sent: 2.36 MB in 0.1236 sec → 160.26 Mbps
+[FPGA] Q9: Score=129, Lowest=109 (count=6), Time=106.7ms
+=== FPGA Total Time for Ref 4: 0.743604 seconds ===
+[Timing] GPU: 0.8465s | FPGA: 0.7436s
+[Scheduler] Times: GPU=0.8465s, FPGA=0.7436s | Ratio: 0.753→0.729
+
+========================================================================================
+[Processing Reference 6/10] GPU: 0.729 | FPGA: 0.271
+[SPLIT] Query length: 256, Overlap: 255
+[SPLIT] Reference total: 10000000, GPU portion: 7289377, FPGA start: 7289122 (FPGA length: 2710878)
+FPGA split saved: ./fpga_splits/fpga_ref5.fasta (start=7289122, length=2710878)
+
+[FPGA] Processing 10 queries for Reference 5 via TCP
+[FPGA] MemFree before allocation: 46248628 kB
+[GPU] Starting computation (Dynamic Chunk: 94667, Threshold: 94667, Threads: 256)
+[GPU] Partitioned into 78 chunks
+[GPU] Query packing: length=256, aligned=256, slots=10, total=2.5 KB
+[GPU] Packed 78 chunks (7.0 MB, avg 91.5 KB/chunk)
+[GPU] Allocating memory: 7.2 MB (Eq:0.1 + Q:0.2 + R:7.0)
+[GPU] Details: numQueries=10, numChunks=78, numOrigRefs=1
+[GPU] totalPairChunks=780, totalOrigPairs=10
+[GPU] Launching kernel: 780 blocks × 256 threads (total: 780 pairs)
+[FPGA] Total sent: 2.59 MB in 0.1298 sec → 167.08 Mbps
+[FPGA] Q0: Score=125, Lowest=110 (count=2), Time=77.5ms
+[FPGA] MemFree before allocation: 46243112 kB
+[FPGA] Total sent: 2.59 MB in 0.1242 sec → 174.63 Mbps
+[FPGA] Q1: Score=129, Lowest=109 (count=1), Time=77.9ms
+[FPGA] MemFree before allocation: 46229576 kB
+[FPGA] Total sent: 2.59 MB in 0.1244 sec → 174.41 Mbps
+[FPGA] Q2: Score=126, Lowest=110 (count=2), Time=79.3ms
+[FPGA] MemFree before allocation: 46230100 kB
+[FPGA] Total sent: 2.59 MB in 0.1243 sec → 174.52 Mbps
+[FPGA] Q3: Score=130, Lowest=111 (count=3), Time=76.7ms
+[FPGA] MemFree before allocation: 46229124 kB
+[FPGA] Total sent: 2.59 MB in 0.1419 sec → 152.87 Mbps
+[FPGA] Q4: Score=130, Lowest=110 (count=1), Time=75.8ms
+[FPGA] MemFree before allocation: 46229596 kB
+[FPGA] Total sent: 2.59 MB in 0.1296 sec → 167.36 Mbps
+[FPGA] Q5: Score=128, Lowest=111 (count=5), Time=78.0ms
+[FPGA] MemFree before allocation: 46227572 kB
+[FPGA] Total sent: 2.59 MB in 0.1253 sec → 173.06 Mbps
+[FPGA] Q6: Score=128, Lowest=112 (count=3), Time=77.5ms
+[FPGA] MemFree before allocation: 46229052 kB
+[FPGA] Total sent: 2.59 MB in 0.1241 sec → 174.74 Mbps
+[GPU] Computation complete
+[FPGA] Q7: Score=123, Lowest=110 (count=11), Time=78.4ms
+[FPGA] MemFree before allocation: 46295340 kB
+[FPGA] Total sent: 2.59 MB in 0.1263 sec → 171.72 Mbps
+[FPGA] Q8: Score=128, Lowest=112 (count=6), Time=78.0ms
+[FPGA] MemFree before allocation: 46287928 kB
+[FPGA] Total sent: 2.59 MB in 0.1257 sec → 172.54 Mbps
+[FPGA] Q9: Score=122, Lowest=108 (count=2), Time=77.1ms
+=== FPGA Total Time for Ref 5: 0.776255 seconds ===
+[Timing] GPU: 0.8304s | FPGA: 0.7763s
+[Scheduler] Times: GPU=0.8304s, FPGA=0.7763s | Ratio: 0.729→0.717
+
+========================================================================================
+[Processing Reference 7/10] GPU: 0.717 | FPGA: 0.283
+[SPLIT] Query length: 256, Overlap: 255
+[SPLIT] Reference total: 10000000, GPU portion: 7168553, FPGA start: 7168298 (FPGA length: 2831702)
+FPGA split saved: ./fpga_splits/fpga_ref6.fasta (start=7168298, length=2831702)
+
+[FPGA] Processing 10 queries for Reference 6 via TCP
+[FPGA] MemFree before allocation: 46296232 kB
+[GPU] Starting computation (Dynamic Chunk: 93098, Threshold: 93098, Threads: 256)
+[GPU] Partitioned into 78 chunks
+[GPU] Query packing: length=256, aligned=256, slots=10, total=2.5 KB
+[GPU] Packed 78 chunks (6.9 MB, avg 90.0 KB/chunk)
+[GPU] Allocating memory: 7.1 MB (Eq:0.1 + Q:0.2 + R:6.9)
+[GPU] Details: numQueries=10, numChunks=78, numOrigRefs=1
+[GPU] totalPairChunks=780, totalOrigPairs=10
+[GPU] Launching kernel: 780 blocks × 256 threads (total: 780 pairs)
+[FPGA] Total sent: 2.70 MB in 0.1263 sec → 179.36 Mbps
+[FPGA] Q0: Score=126, Lowest=109 (count=1), Time=79.7ms
+[FPGA] MemFree before allocation: 46296620 kB
+[FPGA] Total sent: 2.70 MB in 0.1288 sec → 175.84 Mbps
+[FPGA] Q1: Score=126, Lowest=109 (count=2), Time=80.3ms
+[FPGA] MemFree before allocation: 46291960 kB
+[FPGA] Total sent: 2.70 MB in 0.1248 sec → 181.51 Mbps
+[FPGA] Q2: Score=124, Lowest=111 (count=7), Time=80.6ms
+[FPGA] MemFree before allocation: 46304864 kB
+[FPGA] Total sent: 2.70 MB in 0.1306 sec → 173.48 Mbps
+[FPGA] Q3: Score=132, Lowest=110 (count=2), Time=81.4ms
+[FPGA] MemFree before allocation: 46313196 kB
+[FPGA] Total sent: 2.70 MB in 0.1231 sec → 183.98 Mbps
+[FPGA] Q4: Score=128, Lowest=111 (count=4), Time=80.4ms
+[FPGA] MemFree before allocation: 46312236 kB
+[FPGA] Total sent: 2.70 MB in 0.1296 sec → 174.84 Mbps
+[FPGA] Q5: Score=129, Lowest=110 (count=7), Time=82.2ms
+[FPGA] MemFree before allocation: 46312724 kB
+[FPGA] Total sent: 2.70 MB in 0.1293 sec → 175.22 Mbps
+[FPGA] Q6: Score=128, Lowest=110 (count=1), Time=78.6ms
+[FPGA] MemFree before allocation: 46311520 kB
+[FPGA] Total sent: 2.70 MB in 0.1279 sec → 177.11 Mbps
+[GPU] Computation complete
+[FPGA] Q7: Score=127, Lowest=109 (count=2), Time=79.8ms
+[FPGA] MemFree before allocation: 46307748 kB
+[FPGA] Total sent: 2.70 MB in 0.1316 sec → 172.10 Mbps
+[FPGA] Q8: Score=125, Lowest=111 (count=3), Time=80.4ms
+[FPGA] MemFree before allocation: 46307284 kB
+[FPGA] Total sent: 2.70 MB in 0.1276 sec → 177.59 Mbps
+[FPGA] Q9: Score=127, Lowest=111 (count=1), Time=80.6ms
+=== FPGA Total Time for Ref 6: 0.803827 seconds ===
+[Timing] GPU: 0.8100s | FPGA: 0.8038s
+[Scheduler] Times: GPU=0.8100s, FPGA=0.8038s | Ratio: 0.717→0.715
+
+========================================================================================
+[Processing Reference 8/10] GPU: 0.715 | FPGA: 0.285
+[SPLIT] Query length: 256, Overlap: 255
+[SPLIT] Reference total: 10000000, GPU portion: 7154866, FPGA start: 7154611 (FPGA length: 2845389)
+FPGA split saved: ./fpga_splits/fpga_ref7.fasta (start=7154611, length=2845389)
+
+[FPGA] Processing 10 queries for Reference 7 via TCP
+[FPGA] MemFree before allocation: 46307680 kB
+[GPU] Starting computation (Dynamic Chunk: 92920, Threshold: 92920, Threads: 256)
+[GPU] Partitioned into 78 chunks
+[GPU] Query packing: length=256, aligned=256, slots=10, total=2.5 KB
+[GPU] Packed 78 chunks (6.8 MB, avg 89.8 KB/chunk)
+[GPU] Allocating memory: 7.1 MB (Eq:0.1 + Q:0.2 + R:6.8)
+[GPU] Details: numQueries=10, numChunks=78, numOrigRefs=1
+[GPU] totalPairChunks=780, totalOrigPairs=10
+[GPU] Launching kernel: 780 blocks × 256 threads (total: 780 pairs)
+[FPGA] Total sent: 2.71 MB in 0.1326 sec → 171.72 Mbps
+[FPGA] Q0: Score=123, Lowest=110 (count=3), Time=81.9ms
+[FPGA] MemFree before allocation: 46300948 kB
+[FPGA] Total sent: 2.71 MB in 0.1275 sec → 178.53 Mbps
+[FPGA] Q1: Score=129, Lowest=106 (count=1), Time=80.9ms
+[FPGA] MemFree before allocation: 46296828 kB
+[FPGA] Total sent: 2.71 MB in 0.1241 sec → 183.52 Mbps
+[FPGA] Q2: Score=126, Lowest=108 (count=2), Time=81.0ms
+[FPGA] MemFree before allocation: 46293400 kB
+[FPGA] Total sent: 2.71 MB in 0.1274 sec → 178.68 Mbps
+[FPGA] Q3: Score=125, Lowest=112 (count=15), Time=81.8ms
+[FPGA] MemFree before allocation: 46291408 kB
+[FPGA] Total sent: 2.71 MB in 0.1277 sec → 178.30 Mbps
+[FPGA] Q4: Score=126, Lowest=110 (count=1), Time=80.2ms
+[FPGA] MemFree before allocation: 46292732 kB
+[FPGA] Total sent: 2.71 MB in 0.1284 sec → 177.24 Mbps
+[FPGA] Q5: Score=131, Lowest=111 (count=5), Time=79.4ms
+[FPGA] MemFree before allocation: 46288124 kB
+[FPGA] Total sent: 2.71 MB in 0.1292 sec → 176.20 Mbps
+[FPGA] Q6: Score=129, Lowest=105 (count=1), Time=80.8ms
+[FPGA] MemFree before allocation: 46284848 kB
+[FPGA] Total sent: 2.71 MB in 0.1307 sec → 174.20 Mbps
+[GPU] Computation complete
+[FPGA] Q7: Score=127, Lowest=109 (count=1), Time=86.6ms
+[FPGA] MemFree before allocation: 46287376 kB
+[FPGA] Total sent: 2.71 MB in 0.1352 sec → 168.36 Mbps
+[FPGA] Q8: Score=124, Lowest=108 (count=1), Time=80.2ms
+[FPGA] MemFree before allocation: 46285344 kB
+[FPGA] Total sent: 2.71 MB in 0.1274 sec → 178.74 Mbps
+[FPGA] Q9: Score=128, Lowest=110 (count=1), Time=79.6ms
+=== FPGA Total Time for Ref 7: 0.812375 seconds ===
+[Timing] GPU: 0.8123s | FPGA: 0.8124s
+[Scheduler] Times: GPU=0.8123s, FPGA=0.8124s | Ratio: 0.715→0.716
+
+========================================================================================
+[Processing Reference 9/10] GPU: 0.716 | FPGA: 0.284
+[SPLIT] Query length: 256, Overlap: 255
+[SPLIT] Reference total: 10000000, GPU portion: 7155136, FPGA start: 7154881 (FPGA length: 2845119)
+FPGA split saved: ./fpga_splits/fpga_ref8.fasta (start=7154881, length=2845119)
+
+[FPGA] Processing 10 queries for Reference 8 via TCP
+[FPGA] MemFree before allocation: 46287864 kB
+[GPU] Starting computation (Dynamic Chunk: 92923, Threshold: 92923, Threads: 256)
+[GPU] Partitioned into 78 chunks
+[GPU] Query packing: length=256, aligned=256, slots=10, total=2.5 KB
+[GPU] Packed 78 chunks (6.8 MB, avg 89.8 KB/chunk)
+[GPU] Allocating memory: 7.1 MB (Eq:0.1 + Q:0.2 + R:6.8)
+[GPU] Details: numQueries=10, numChunks=78, numOrigRefs=1
+[GPU] totalPairChunks=780, totalOrigPairs=10
+[GPU] Launching kernel: 780 blocks × 256 threads (total: 780 pairs)
+[FPGA] Total sent: 2.71 MB in 0.1300 sec → 175.04 Mbps
+[FPGA] Q0: Score=128, Lowest=107 (count=3), Time=80.6ms
+[FPGA] MemFree before allocation: 46277068 kB
+[FPGA] Total sent: 2.71 MB in 0.1271 sec → 179.06 Mbps
+[FPGA] Q1: Score=127, Lowest=110 (count=7), Time=79.6ms
+[FPGA] MemFree before allocation: 46278516 kB
+[FPGA] Total sent: 2.71 MB in 0.1291 sec → 176.31 Mbps
+[FPGA] Q2: Score=125, Lowest=109 (count=2), Time=80.7ms
+[FPGA] MemFree before allocation: 46279100 kB
+[FPGA] Total sent: 2.71 MB in 0.1252 sec → 181.84 Mbps
+[FPGA] Q3: Score=128, Lowest=111 (count=3), Time=79.7ms
+[FPGA] MemFree before allocation: 46279004 kB
+[FPGA] Total sent: 2.71 MB in 0.1264 sec → 180.07 Mbps
+[FPGA] Q4: Score=124, Lowest=111 (count=2), Time=80.9ms
+[FPGA] MemFree before allocation: 46277988 kB
+[FPGA] Total sent: 2.71 MB in 0.1274 sec → 178.72 Mbps
+[FPGA] Q5: Score=126, Lowest=112 (count=4), Time=79.3ms
+[FPGA] MemFree before allocation: 46280272 kB
+[FPGA] Total sent: 2.71 MB in 0.1281 sec → 177.74 Mbps
+[FPGA] Q6: Score=130, Lowest=110 (count=1), Time=79.9ms
+[FPGA] MemFree before allocation: 46279508 kB
+[FPGA] Total sent: 2.71 MB in 0.1268 sec → 179.48 Mbps
+[GPU] Computation complete
+[FPGA] Q7: Score=123, Lowest=110 (count=1), Time=80.9ms
+[FPGA] MemFree before allocation: 46278500 kB
+[FPGA] Total sent: 2.71 MB in 0.1258 sec → 180.94 Mbps
+[FPGA] Q8: Score=126, Lowest=110 (count=1), Time=78.9ms
+[FPGA] MemFree before allocation: 46275980 kB
+[FPGA] Total sent: 2.71 MB in 0.1294 sec → 175.87 Mbps
+[FPGA] Q9: Score=127, Lowest=111 (count=12), Time=80.8ms
+=== FPGA Total Time for Ref 8: 0.801260 seconds ===
+[Timing] GPU: 0.8127s | FPGA: 0.8013s
+[Scheduler] Times: GPU=0.8127s, FPGA=0.8013s | Ratio: 0.716→0.713
+
+========================================================================================
+[Processing Reference 10/10] GPU: 0.713 | FPGA: 0.287
+[SPLIT] Query length: 256, Overlap: 255
+[SPLIT] Reference total: 10000000, GPU portion: 7129924, FPGA start: 7129669 (FPGA length: 2870331)
+FPGA split saved: ./fpga_splits/fpga_ref9.fasta (start=7129669, length=2870331)
+
+[FPGA] Processing 10 queries for Reference 9 via TCP
+[FPGA] MemFree before allocation: 46266956 kB
+[GPU] Starting computation (Dynamic Chunk: 92596, Threshold: 92596, Threads: 256)
+[GPU] Partitioned into 78 chunks
+[GPU] Query packing: length=256, aligned=256, slots=10, total=2.5 KB
+[GPU] Packed 78 chunks (6.8 MB, avg 89.5 KB/chunk)
+[GPU] Allocating memory: 7.1 MB (Eq:0.1 + Q:0.2 + R:6.8)
+[GPU] Details: numQueries=10, numChunks=78, numOrigRefs=1
+[GPU] totalPairChunks=780, totalOrigPairs=10
+[GPU] Launching kernel: 780 blocks × 256 threads (total: 780 pairs)
+[FPGA] Total sent: 2.74 MB in 0.1409 sec → 163.01 Mbps
+[FPGA] Q0: Score=129, Lowest=109 (count=1), Time=92.8ms
+[FPGA] MemFree before allocation: 46263304 kB
+[FPGA] Total sent: 2.74 MB in 0.1493 sec → 153.82 Mbps
+[FPGA] Q1: Score=127, Lowest=110 (count=10), Time=81.9ms
+[FPGA] MemFree before allocation: 46268144 kB
+[FPGA] Total sent: 2.74 MB in 0.1270 sec → 180.86 Mbps
+[FPGA] Q2: Score=129, Lowest=110 (count=4), Time=81.1ms
+[FPGA] MemFree before allocation: 46256284 kB
+[FPGA] Total sent: 2.74 MB in 0.1295 sec → 177.32 Mbps
+[FPGA] Q3: Score=132, Lowest=111 (count=2), Time=84.4ms
+[FPGA] MemFree before allocation: 46257964 kB
+[FPGA] Total sent: 2.74 MB in 0.1317 sec → 174.32 Mbps
+[FPGA] Q4: Score=124, Lowest=109 (count=1), Time=104.6ms
+[FPGA] MemFree before allocation: 46272996 kB
+[FPGA] Total sent: 2.74 MB in 0.1326 sec → 173.17 Mbps
+[FPGA] Q5: Score=129, Lowest=109 (count=1), Time=80.6ms
+[FPGA] MemFree before allocation: 46272412 kB
+[FPGA] Total sent: 2.74 MB in 0.1305 sec → 175.97 Mbps
+[FPGA] Q6: Score=130, Lowest=111 (count=6), Time=80.2ms
+[FPGA] MemFree before allocation: 46271648 kB
+[FPGA] Total sent: 2.74 MB in 0.1290 sec → 178.03 Mbps
+[GPU] Computation complete
+[FPGA] Q7: Score=126, Lowest=110 (count=9), Time=89.7ms
+[FPGA] MemFree before allocation: 46266648 kB
+[FPGA] Total sent: 2.74 MB in 0.1294 sec → 177.50 Mbps
+[FPGA] Q8: Score=125, Lowest=112 (count=5), Time=81.9ms
+[FPGA] MemFree before allocation: 46265844 kB
+[FPGA] Total sent: 2.74 MB in 0.1277 sec → 179.86 Mbps
+[FPGA] Q9: Score=124, Lowest=108 (count=5), Time=80.4ms
+=== FPGA Total Time for Ref 9: 0.857472 seconds ===
+[Timing] GPU: 0.8087s | FPGA: 0.8575s
+[Scheduler] Times: GPU=0.8087s, FPGA=0.8575s | Ratio: 0.713→0.724
+
+===== RESULTS =====
+
+Pair: Q1(256) Vs R1(10000000)
+Reference length: 10000000 (GPU: 7000000, FPGA: 3000255)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 109
+Lowest Score Indexes: [6346527]
+Last Score: 120
+
+Pair: Q2(256) Vs R1(10000000)
+Reference length: 10000000 (GPU: 7000000, FPGA: 3000255)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 109
+Lowest Score Indexes: [544345, 544346, 1240357, 8692566, 8692567]
+Last Score: 130
+
+Pair: Q3(256) Vs R1(10000000)
+Reference length: 10000000 (GPU: 7000000, FPGA: 3000255)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 108
+Lowest Score Indexes: [8399148, 8399149]
+Last Score: 126
+
+Pair: Q4(256) Vs R1(10000000)
+Reference length: 10000000 (GPU: 7000000, FPGA: 3000255)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 110
+Lowest Score Indexes: [2732705, 2732706, 2732707, 5586525, 9445967, 9445968, 9753596]
+Last Score: 126
+
+Pair: Q5(256) Vs R1(10000000)
+Reference length: 10000000 (GPU: 7000000, FPGA: 3000255)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 108
+Lowest Score Indexes: [5374829]
+Last Score: 129
+
+Pair: Q6(256) Vs R1(10000000)
+Reference length: 10000000 (GPU: 7000000, FPGA: 3000255)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 110
+Lowest Score Indexes: [5773344, 5773346, 5773347, 5773350, 8130179, 8130180]
+Last Score: 122
+
+Pair: Q7(256) Vs R1(10000000)
+Reference length: 10000000 (GPU: 7000000, FPGA: 3000255)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 110
+Lowest Score Indexes: [5236428, 5285207, 5285209, 5285210, 5285211, 5285212]
+Last Score: 130
+
+Pair: Q8(256) Vs R1(10000000)
+Reference length: 10000000 (GPU: 7000000, FPGA: 3000255)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 108
+Lowest Score Indexes: [1060342, 1060343]
+Last Score: 127
+
+Pair: Q9(256) Vs R1(10000000)
+Reference length: 10000000 (GPU: 7000000, FPGA: 3000255)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 110
+Lowest Score Indexes: [7638481]
+Last Score: 130
+
+Pair: Q10(256) Vs R1(10000000)
+Reference length: 10000000 (GPU: 7000000, FPGA: 3000255)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 106
+Lowest Score Indexes: [4209156, 4209158, 4209159, 4209163]
+Last Score: 129
+
+Pair: Q1(256) Vs R2(10000000)
+Reference length: 10000000 (GPU: 7414420, FPGA: 2585835)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 109
+Lowest Score Indexes: [158175, 158176, 4736631, 4736632, 7685108, 7685109]
+Last Score: 128
+
+Pair: Q2(256) Vs R2(10000000)
+Reference length: 10000000 (GPU: 7414420, FPGA: 2585835)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 110
+Lowest Score Indexes: [2987314, 2987315, 2987316, 2987317, 5002151, 5002152, 5002155, 5002156, 5002158, 6256895, 6256898, 6256899, 8106761]
+Last Score: 130
+
+Pair: Q3(256) Vs R2(10000000)
+Reference length: 10000000 (GPU: 7414420, FPGA: 2585835)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 108
+Lowest Score Indexes: [1731216, 1731218]
+Last Score: 123
+
+Pair: Q4(256) Vs R2(10000000)
+Reference length: 10000000 (GPU: 7414420, FPGA: 2585835)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 107
+Lowest Score Indexes: [101979]
+Last Score: 124
+
+Pair: Q5(256) Vs R2(10000000)
+Reference length: 10000000 (GPU: 7414420, FPGA: 2585835)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 110
+Lowest Score Indexes: [666251, 666252]
+Last Score: 134
+
+Pair: Q6(256) Vs R2(10000000)
+Reference length: 10000000 (GPU: 7414420, FPGA: 2585835)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 108
+Lowest Score Indexes: [9587797, 9587798, 9587799]
+Last Score: 135
+
+Pair: Q7(256) Vs R2(10000000)
+Reference length: 10000000 (GPU: 7414420, FPGA: 2585835)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 110
+Lowest Score Indexes: [354550]
+Last Score: 133
+
+Pair: Q8(256) Vs R2(10000000)
+Reference length: 10000000 (GPU: 7414420, FPGA: 2585835)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 107
+Lowest Score Indexes: [9803059]
+Last Score: 126
+
+Pair: Q9(256) Vs R2(10000000)
+Reference length: 10000000 (GPU: 7414420, FPGA: 2585835)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 111
+Lowest Score Indexes: [4286488, 4286489, 4286490, 5146915, 5146916, 5146917, 5146918, 5146919, 5146920, 9545080, 9545081]
+Last Score: 131
+
+Pair: Q10(256) Vs R2(10000000)
+Reference length: 10000000 (GPU: 7414420, FPGA: 2585835)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 109
+Lowest Score Indexes: [81815, 81816, 81817, 81818, 81819, 81820, 81821, 81823, 81824, 81825, 2473624, 2473625, 2473626, 2473627, 3097176, 3097177, 3097178, 3097179, 7668793, 8536467]
+Last Score: 129
+
+Pair: Q1(256) Vs R3(10000000)
+Reference length: 10000000 (GPU: 7158221, FPGA: 2842034)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 108
+Lowest Score Indexes: [2633978, 3870028, 3870029]
+Last Score: 129
+
+Pair: Q2(256) Vs R3(10000000)
+Reference length: 10000000 (GPU: 7158221, FPGA: 2842034)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 107
+Lowest Score Indexes: [7578354, 7578355, 7578356]
+Last Score: 131
+
+Pair: Q3(256) Vs R3(10000000)
+Reference length: 10000000 (GPU: 7158221, FPGA: 2842034)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 109
+Lowest Score Indexes: [6435506, 6435507]
+Last Score: 129
+
+Pair: Q4(256) Vs R3(10000000)
+Reference length: 10000000 (GPU: 7158221, FPGA: 2842034)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 110
+Lowest Score Indexes: [347609, 347612, 347613, 2049340, 2049341, 2049342, 2049343, 2049344, 2049345, 2049348, 6952898]
+Last Score: 122
+
+Pair: Q5(256) Vs R3(10000000)
+Reference length: 10000000 (GPU: 7158221, FPGA: 2842034)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 111
+Lowest Score Indexes: [3459709]
+Last Score: 130
+
+Pair: Q6(256) Vs R3(10000000)
+Reference length: 10000000 (GPU: 7158221, FPGA: 2842034)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 109
+Lowest Score Indexes: [7090585, 7090586]
+Last Score: 132
+
+Pair: Q7(256) Vs R3(10000000)
+Reference length: 10000000 (GPU: 7158221, FPGA: 2842034)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 108
+Lowest Score Indexes: [2494725, 2494727, 2494728, 2494729, 2494730, 2494731, 2494732, 2494733]
+Last Score: 125
+
+Pair: Q8(256) Vs R3(10000000)
+Reference length: 10000000 (GPU: 7158221, FPGA: 2842034)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 110
+Lowest Score Indexes: [289494, 1363579, 1363580, 3717983, 4437887, 4437888, 4437889, 4437890, 6794065, 7598304, 8928540, 9425637]
+Last Score: 125
+
+Pair: Q9(256) Vs R3(10000000)
+Reference length: 10000000 (GPU: 7158221, FPGA: 2842034)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 111
+Lowest Score Indexes: [4159119, 4201369]
+Last Score: 126
+
+Pair: Q10(256) Vs R3(10000000)
+Reference length: 10000000 (GPU: 7158221, FPGA: 2842034)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 109
+Lowest Score Indexes: [2628475]
+Last Score: 128
+
+Pair: Q1(256) Vs R4(10000000)
+Reference length: 10000000 (GPU: 7384017, FPGA: 2616238)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 109
+Lowest Score Indexes: [4242932, 4464612]
+Last Score: 124
+
+Pair: Q2(256) Vs R4(10000000)
+Reference length: 10000000 (GPU: 7384017, FPGA: 2616238)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 109
+Lowest Score Indexes: [347666, 347667, 6833185, 6833186, 6833187, 6833188, 8773433]
+Last Score: 124
+
+Pair: Q3(256) Vs R4(10000000)
+Reference length: 10000000 (GPU: 7384017, FPGA: 2616238)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 110
+Lowest Score Indexes: [2192355, 2192356, 6968450, 6968451, 8742908, 8742909, 8742910]
+Last Score: 127
+
+Pair: Q4(256) Vs R4(10000000)
+Reference length: 10000000 (GPU: 7384017, FPGA: 2616238)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 108
+Lowest Score Indexes: [6298183, 6298184, 6298185, 6298186]
+Last Score: 128
+
+Pair: Q5(256) Vs R4(10000000)
+Reference length: 10000000 (GPU: 7384017, FPGA: 2616238)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 109
+Lowest Score Indexes: [5870688, 5870689]
+Last Score: 129
+
+Pair: Q6(256) Vs R4(10000000)
+Reference length: 10000000 (GPU: 7384017, FPGA: 2616238)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 109
+Lowest Score Indexes: [8822593, 8822594, 8822595]
+Last Score: 129
+
+Pair: Q7(256) Vs R4(10000000)
+Reference length: 10000000 (GPU: 7384017, FPGA: 2616238)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 108
+Lowest Score Indexes: [7375037]
+Last Score: 128
+
+Pair: Q8(256) Vs R4(10000000)
+Reference length: 10000000 (GPU: 7384017, FPGA: 2616238)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 109
+Lowest Score Indexes: [698533, 698534]
+Last Score: 132
+
+Pair: Q9(256) Vs R4(10000000)
+Reference length: 10000000 (GPU: 7384017, FPGA: 2616238)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 110
+Lowest Score Indexes: [6688914]
+Last Score: 128
+
+Pair: Q10(256) Vs R4(10000000)
+Reference length: 10000000 (GPU: 7384017, FPGA: 2616238)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 109
+Lowest Score Indexes: [9404383, 9404384, 9404385, 9404386, 9404387]
+Last Score: 125
+
+Pair: Q1(256) Vs R5(10000000)
+Reference length: 10000000 (GPU: 7525419, FPGA: 2474836)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 108
+Lowest Score Indexes: [7197697, 7197698]
+Last Score: 127
+
+Pair: Q2(256) Vs R5(10000000)
+Reference length: 10000000 (GPU: 7525419, FPGA: 2474836)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 110
+Lowest Score Indexes: [297457, 2514739, 2514740, 2514742, 2668893, 3807815, 4528709, 6329572, 6329573, 6329574, 6329575, 6329576, 8549998, 8549999, 8550000]
+Last Score: 128
+
+Pair: Q3(256) Vs R5(10000000)
+Reference length: 10000000 (GPU: 7525419, FPGA: 2474836)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 109
+Lowest Score Indexes: [9384759, 9384760, 9384770]
+Last Score: 127
+
+Pair: Q4(256) Vs R5(10000000)
+Reference length: 10000000 (GPU: 7525419, FPGA: 2474836)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 110
+Lowest Score Indexes: [6399493, 6930988, 9332218]
+Last Score: 127
+
+Pair: Q5(256) Vs R5(10000000)
+Reference length: 10000000 (GPU: 7525419, FPGA: 2474836)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 109
+Lowest Score Indexes: [5427399]
+Last Score: 129
+
+Pair: Q6(256) Vs R5(10000000)
+Reference length: 10000000 (GPU: 7525419, FPGA: 2474836)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 106
+Lowest Score Indexes: [9004202, 9004203]
+Last Score: 130
+
+Pair: Q7(256) Vs R5(10000000)
+Reference length: 10000000 (GPU: 7525419, FPGA: 2474836)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 109
+Lowest Score Indexes: [7657837, 7657842]
+Last Score: 127
+
+Pair: Q8(256) Vs R5(10000000)
+Reference length: 10000000 (GPU: 7525419, FPGA: 2474836)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 106
+Lowest Score Indexes: [4279819]
+Last Score: 128
+
+Pair: Q9(256) Vs R5(10000000)
+Reference length: 10000000 (GPU: 7525419, FPGA: 2474836)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 110
+Lowest Score Indexes: [7300176, 7300177]
+Last Score: 131
+
+Pair: Q10(256) Vs R5(10000000)
+Reference length: 10000000 (GPU: 7525419, FPGA: 2474836)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 108
+Lowest Score Indexes: [4166773, 6314745]
+Last Score: 129
+
+Pair: Q1(256) Vs R6(10000000)
+Reference length: 10000000 (GPU: 7289377, FPGA: 2710878)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 108
+Lowest Score Indexes: [5877369, 5877370, 5877372]
+Last Score: 125
+
+Pair: Q2(256) Vs R6(10000000)
+Reference length: 10000000 (GPU: 7289377, FPGA: 2710878)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 109
+Lowest Score Indexes: [4467367, 4467368, 4467369, 4467370, 4467377, 7690522]
+Last Score: 129
+
+Pair: Q3(256) Vs R6(10000000)
+Reference length: 10000000 (GPU: 7289377, FPGA: 2710878)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 107
+Lowest Score Indexes: [195390]
+Last Score: 126
+
+Pair: Q4(256) Vs R6(10000000)
+Reference length: 10000000 (GPU: 7289377, FPGA: 2710878)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 110
+Lowest Score Indexes: [1211378, 2557412]
+Last Score: 130
+
+Pair: Q5(256) Vs R6(10000000)
+Reference length: 10000000 (GPU: 7289377, FPGA: 2710878)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 110
+Lowest Score Indexes: [7740593]
+Last Score: 130
+
+Pair: Q6(256) Vs R6(10000000)
+Reference length: 10000000 (GPU: 7289377, FPGA: 2710878)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 108
+Lowest Score Indexes: [7061277, 7061278, 7061279, 7061280, 7061281, 7061282]
+Last Score: 128
+
+Pair: Q7(256) Vs R6(10000000)
+Reference length: 10000000 (GPU: 7289377, FPGA: 2710878)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 109
+Lowest Score Indexes: [4350791]
+Last Score: 128
+
+Pair: Q8(256) Vs R6(10000000)
+Reference length: 10000000 (GPU: 7289377, FPGA: 2710878)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 109
+Lowest Score Indexes: [4320185]
+Last Score: 123
+
+Pair: Q9(256) Vs R6(10000000)
+Reference length: 10000000 (GPU: 7289377, FPGA: 2710878)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 110
+Lowest Score Indexes: [2768626, 4784342, 4784343]
+Last Score: 128
+
+Pair: Q10(256) Vs R6(10000000)
+Reference length: 10000000 (GPU: 7289377, FPGA: 2710878)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 108
+Lowest Score Indexes: [7607929, 7607930]
+Last Score: 122
+
+Pair: Q1(256) Vs R7(10000000)
+Reference length: 10000000 (GPU: 7168553, FPGA: 2831702)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 107
+Lowest Score Indexes: [4403498, 4403499]
+Last Score: 126
+
+Pair: Q2(256) Vs R7(10000000)
+Reference length: 10000000 (GPU: 7168553, FPGA: 2831702)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 108
+Lowest Score Indexes: [2927364, 4806105]
+Last Score: 126
+
+Pair: Q3(256) Vs R7(10000000)
+Reference length: 10000000 (GPU: 7168553, FPGA: 2831702)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 108
+Lowest Score Indexes: [6674753, 6674755]
+Last Score: 124
+
+Pair: Q4(256) Vs R7(10000000)
+Reference length: 10000000 (GPU: 7168553, FPGA: 2831702)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 109
+Lowest Score Indexes: [6680133, 6680141, 6680142]
+Last Score: 132
+
+Pair: Q5(256) Vs R7(10000000)
+Reference length: 10000000 (GPU: 7168553, FPGA: 2831702)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 111
+Lowest Score Indexes: [448110, 576717, 2830254, 3691918, 7425084, 7425085, 7425086, 7425087]
+Last Score: 128
+
+Pair: Q6(256) Vs R7(10000000)
+Reference length: 10000000 (GPU: 7168553, FPGA: 2831702)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 110
+Lowest Score Indexes: [1115137, 8617728, 9319691, 9319692, 9319693, 9319694, 9319695, 9562034]
+Last Score: 129
+
+Pair: Q7(256) Vs R7(10000000)
+Reference length: 10000000 (GPU: 7168553, FPGA: 2831702)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 110
+Lowest Score Indexes: [8374658]
+Last Score: 128
+
+Pair: Q8(256) Vs R7(10000000)
+Reference length: 10000000 (GPU: 7168553, FPGA: 2831702)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 109
+Lowest Score Indexes: [6480225, 8310645, 9095541]
+Last Score: 127
+
+Pair: Q9(256) Vs R7(10000000)
+Reference length: 10000000 (GPU: 7168553, FPGA: 2831702)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 111
+Lowest Score Indexes: [3454705, 3454706, 3454707, 8620030, 8620031, 8620032]
+Last Score: 125
+
+Pair: Q10(256) Vs R7(10000000)
+Reference length: 10000000 (GPU: 7168553, FPGA: 2831702)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 109
+Lowest Score Indexes: [3010019, 3010020, 3010021, 3010022]
+Last Score: 127
+
+Pair: Q1(256) Vs R8(10000000)
+Reference length: 10000000 (GPU: 7154866, FPGA: 2845389)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 106
+Lowest Score Indexes: [4169957, 4169959, 4169960]
+Last Score: 123
+
+Pair: Q2(256) Vs R8(10000000)
+Reference length: 10000000 (GPU: 7154866, FPGA: 2845389)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 106
+Lowest Score Indexes: [8154057]
+Last Score: 129
+
+Pair: Q3(256) Vs R8(10000000)
+Reference length: 10000000 (GPU: 7154866, FPGA: 2845389)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 108
+Lowest Score Indexes: [7976440, 7976441]
+Last Score: 126
+
+Pair: Q4(256) Vs R8(10000000)
+Reference length: 10000000 (GPU: 7154866, FPGA: 2845389)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 109
+Lowest Score Indexes: [6282495, 6282496, 6282497]
+Last Score: 125
+
+Pair: Q5(256) Vs R8(10000000)
+Reference length: 10000000 (GPU: 7154866, FPGA: 2845389)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 110
+Lowest Score Indexes: [7532221]
+Last Score: 126
+
+Pair: Q6(256) Vs R8(10000000)
+Reference length: 10000000 (GPU: 7154866, FPGA: 2845389)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 111
+Lowest Score Indexes: [895549, 895550, 2267579, 2267580, 2267581, 4156833, 4373185, 4478273, 4478276, 5745466, 5776916, 5776917, 5776918, 6715195, 6805754, 7942505, 7942507, 7942508, 7942512, 9845889]
+Last Score: 131
+
+Pair: Q7(256) Vs R8(10000000)
+Reference length: 10000000 (GPU: 7154866, FPGA: 2845389)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 105
+Lowest Score Indexes: [9687246]
+Last Score: 129
+
+Pair: Q8(256) Vs R8(10000000)
+Reference length: 10000000 (GPU: 7154866, FPGA: 2845389)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 109
+Lowest Score Indexes: [4069300, 4069301, 4069302, 9748144]
+Last Score: 127
+
+Pair: Q9(256) Vs R8(10000000)
+Reference length: 10000000 (GPU: 7154866, FPGA: 2845389)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 108
+Lowest Score Indexes: [9912201]
+Last Score: 124
+
+Pair: Q10(256) Vs R8(10000000)
+Reference length: 10000000 (GPU: 7154866, FPGA: 2845389)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 109
+Lowest Score Indexes: [1221139, 1221141, 3789894, 3789895, 3789896, 3789899]
+Last Score: 128
+
+Pair: Q1(256) Vs R9(10000000)
+Reference length: 10000000 (GPU: 7155136, FPGA: 2845119)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 107
+Lowest Score Indexes: [8587374, 8587375, 8587376]
+Last Score: 128
+
+Pair: Q2(256) Vs R9(10000000)
+Reference length: 10000000 (GPU: 7155136, FPGA: 2845119)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 110
+Lowest Score Indexes: [271040, 3590340, 3590341, 3590347, 5949552, 6332677, 6332685, 7478028, 7747953, 8287647, 8287648, 8287649, 9757436, 9757437]
+Last Score: 127
+
+Pair: Q3(256) Vs R9(10000000)
+Reference length: 10000000 (GPU: 7155136, FPGA: 2845119)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 109
+Lowest Score Indexes: [8946286, 8946289]
+Last Score: 125
+
+Pair: Q4(256) Vs R9(10000000)
+Reference length: 10000000 (GPU: 7155136, FPGA: 2845119)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 108
+Lowest Score Indexes: [5479234]
+Last Score: 128
+
+Pair: Q5(256) Vs R9(10000000)
+Reference length: 10000000 (GPU: 7155136, FPGA: 2845119)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 109
+Lowest Score Indexes: [1381771, 1381772, 1381773]
+Last Score: 124
+
+Pair: Q6(256) Vs R9(10000000)
+Reference length: 10000000 (GPU: 7155136, FPGA: 2845119)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 107
+Lowest Score Indexes: [6551793, 6551794, 6551797, 6551798]
+Last Score: 126
+
+Pair: Q7(256) Vs R9(10000000)
+Reference length: 10000000 (GPU: 7155136, FPGA: 2845119)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 109
+Lowest Score Indexes: [3109320, 6053684]
+Last Score: 130
+
+Pair: Q8(256) Vs R9(10000000)
+Reference length: 10000000 (GPU: 7155136, FPGA: 2845119)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 108
+Lowest Score Indexes: [1870041, 1870042, 1870046]
+Last Score: 123
+
+Pair: Q9(256) Vs R9(10000000)
+Reference length: 10000000 (GPU: 7155136, FPGA: 2845119)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 109
+Lowest Score Indexes: [568264, 568267, 568268]
+Last Score: 126
+
+Pair: Q10(256) Vs R9(10000000)
+Reference length: 10000000 (GPU: 7155136, FPGA: 2845119)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 110
+Lowest Score Indexes: [2147861, 2147862, 2321856, 2353784, 4474037, 5474293, 5474294, 5474295, 5474296, 5474297, 5474298, 6640973]
+Last Score: 127
+
+Pair: Q1(256) Vs R10(10000000)
+Reference length: 10000000 (GPU: 7129924, FPGA: 2870331)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 109
+Lowest Score Indexes: [479627, 2891886, 2891888, 2891896, 4763930, 4763931, 7765434]
+Last Score: 129
+
+Pair: Q2(256) Vs R10(10000000)
+Reference length: 10000000 (GPU: 7129924, FPGA: 2870331)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 109
+Lowest Score Indexes: [45787, 45788]
+Last Score: 127
+
+Pair: Q3(256) Vs R10(10000000)
+Reference length: 10000000 (GPU: 7129924, FPGA: 2870331)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 109
+Lowest Score Indexes: [865012, 865013, 865014, 865015, 865017, 865018, 865019, 865020]
+Last Score: 129
+
+Pair: Q4(256) Vs R10(10000000)
+Reference length: 10000000 (GPU: 7129924, FPGA: 2870331)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 111
+Lowest Score Indexes: [102672, 102673, 492616, 492619, 492620, 492621, 2328140, 2328141, 2328142, 2328143, 7550631, 8191728]
+Last Score: 132
+
+Pair: Q5(256) Vs R10(10000000)
+Reference length: 10000000 (GPU: 7129924, FPGA: 2870331)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 109
+Lowest Score Indexes: [8210813]
+Last Score: 124
+
+Pair: Q6(256) Vs R10(10000000)
+Reference length: 10000000 (GPU: 7129924, FPGA: 2870331)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 109
+Lowest Score Indexes: [9519740]
+Last Score: 129
+
+Pair: Q7(256) Vs R10(10000000)
+Reference length: 10000000 (GPU: 7129924, FPGA: 2870331)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 108
+Lowest Score Indexes: [6860998]
+Last Score: 130
+
+Pair: Q8(256) Vs R10(10000000)
+Reference length: 10000000 (GPU: 7129924, FPGA: 2870331)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 105
+Lowest Score Indexes: [5642294]
+Last Score: 126
+
+Pair: Q9(256) Vs R10(10000000)
+Reference length: 10000000 (GPU: 7129924, FPGA: 2870331)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 111
+Lowest Score Indexes: [6019501]
+Last Score: 125
+
+Pair: Q10(256) Vs R10(10000000)
+Reference length: 10000000 (GPU: 7129924, FPGA: 2870331)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 107
+Lowest Score Indexes: [2719562]
+Last Score: 124
+
+===== SUMMARY =====
+Total GPU: 8.2082 s | Total FPGA: 8.3397 s
+Final ratio - GPU: 0.724 | FPGA: 0.276
+===================

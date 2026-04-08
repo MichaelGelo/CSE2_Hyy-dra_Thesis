@@ -14,7 +14,7 @@
 // FILE PATHS
 // ============================================================================
 #define QUERY_FILE "/home/dlsu-cse/Downloads/Stress Test/stestque_256.fasta"
-#define REFERENCE_FILE "/home/dlsu-cse/Downloads/Stress Test/stestref_500M.fasta"
+#define REFERENCE_FILE "/home/dlsu-cse/Downloads/Stress Test/stestm10ref_10M.fasta"
 
 // ============================================================================
 // ALGORITHM LIMITS

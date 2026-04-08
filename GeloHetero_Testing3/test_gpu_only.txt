@@ -1,0 +1,2 @@
+Let me check if the GPU alone (without FPGA) gets the correct score of 108.
+We need to modify config.h to set GPU ratio to 1.0 temporarily.

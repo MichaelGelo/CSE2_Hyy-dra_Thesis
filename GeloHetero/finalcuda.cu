@@ -99,11 +99,12 @@ void* run_hyyro_gpu(void* args) {
     char* h_queries = NULL;
     char* h_refs = NULL;
     int* h_ref_offsets = NULL;
+    size_t total_query_bytes = 0;
     size_t total_ref_bytes = 0;
     
     packSequencesEfficient(query_seqs, num_queries, 
                           part_refs.chunk_seqs, part_refs.chunk_lens, num_chunks,
-                          &h_queries, &h_refs, &h_ref_offsets, &total_ref_bytes);
+                          &h_queries, &h_refs, &h_ref_offsets, &total_query_bytes, &total_ref_bytes);
     
     if (!h_queries || !h_refs || !h_ref_offsets) {
         fprintf(stderr, "ERROR: Out of memory for host buffers\n");
@@ -120,7 +121,7 @@ void* run_hyyro_gpu(void* args) {
     transferToGpuEfficient(&gpu_buffers, h_Eq_queries, h_queries, h_refs,
                           q_lens, part_refs.chunk_lens, h_ref_offsets,
                           &part_refs, orig_ref_lens,
-                          num_queries, num_chunks, num_orig_refs, total_ref_bytes);
+                          num_queries, num_chunks, num_orig_refs, total_query_bytes, total_ref_bytes);
 
     // ========== Build chunk-to-original mapping ==========
     int* orig_chunk_counts = NULL;

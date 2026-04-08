@@ -1,0 +1,12 @@
+Hetero Run
+Query File,Query Length,Reference File,Reference Length,Number of Hits,Hit Indexes,Lowest Score,Lowest Score Indexes,Last Score
+que1_64.fasta,64,Bacteria.fasta,3437861,0,"N/A",22,"82143,103835,913684,2046650,2680360",32
+que1_64.fasta,64,Cyanobacteria.fasta,1688963,0,"N/A",21,"751830,885739",35
+que1_64.fasta,64,Eudicots.fasta,109333515,0,"N/A",19,"108976422",32
+que1_64.fasta,64,G-proteobacteria.fasta,6397126,0,"N/A",20,"882888,882889,3813919,3816787",34
+que1_64.fasta,64,Human.fasta,234033217,0,"N/A",19,"29438227",31
+que1_64.fasta,64,Mouse.fasta,195154279,0,"N/A",18,"19286024",-1
+que1_64.fasta,64,Mycoplasmas.fasta,845307,0,"N/A",23,"44687,226599,483390,580472,620571,776250",33
+que1_64.fasta,64,PigeonPea.fasta,17676265,0,"N/A",20,"15095197,15095198,15798570",30
+que1_64.fasta,64,Platypus.fasta,47594283,0,"N/A",20,"11315885,27653399,35114505",31
+que1_64.fasta,64,StiffBrome.fasta,75071545,0,"N/A",19,"35974685",37

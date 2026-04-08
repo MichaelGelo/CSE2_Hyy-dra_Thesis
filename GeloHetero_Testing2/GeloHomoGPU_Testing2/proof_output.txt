@@ -1,0 +1,38 @@
+=== Hyyrö Bit-Vector Levenshtein with DYNAMIC Partitioning (GPU-only) ===
+
+==================== LOADING ====================
+Queries Loaded: 1
+Original References Loaded: 1
+
+==================== DYNAMIC PARTITIONING ====================
+[Partitioning] chunk_size=304730, partition_threshold=304730
+[Partitioning] Estimated GPU blocks=769 (target ~768)
+[Partitioning] Estimated GPU memory=223.71 MB
+
+==================== PARTITIONING RESULTS ====================
+Overlap (Q-1): 255
+Generated Chunks: 769
+Actual GPU blocks: 1 queries × 769 chunks = 769
+
+=== Running Hyyrö GPU Pipeline ===
+Packed references: 769 chunks into 223.38 MB (avg 297.45 KB/chunk)
+Allocating GPU memory:
+  Eq tables: 0.01 MB
+  Queries: 0.00 MB
+  References (CONTIGUOUS): 223.38 MB
+  Total GPU memory allocated: 223.42 MB
+*** OPTIMIZED Kernel launch: 769 blocks × 256 threads, shared=8192 bytes
+    Total pairs: 1 queries × 769 chunks = 769 blocks
+    GPU utilization: 769 parallel computations
+----------------------------------------------------------------------------
+Pair: Q1(256) Vs R1(234033217)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 108
+Lowest Score Indexes: [212842719,212842720,212842721,212842722,212842723]
+Last Score: 133
+----------------------------------------------------------------------------
+
+10 loop Average time: 2.169024 sec.
+
+==================== DONE ====================

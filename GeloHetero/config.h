@@ -10,8 +10,12 @@
 // FILE PATHS
 // Input files for queries and references
 // ============================================================================
-#define QUERY_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/que1_128.fasta"
-#define REFERENCE_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/Mycoplasmas.fasta"
+
+#define QUERY_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/tempQue/que1_256.fasta"
+#define REFERENCE_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/tempRef/Mycoplasmas.fasta"
+
+//#define QUERY_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/que1_256.fasta"
+//#define REFERENCE_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/Human.fasta"
 #define FPGA_OUTPUT_DIR "./fpga_splits/"
 
 // ============================================================================
@@ -61,7 +65,7 @@
 #define SM_COUNT 64                     // Number of Streaming Multiprocessors
 #define BLOCKS_PER_SM 12                // Blocks per SM for optimal occupancy
 #define TARGET_BLOCKS (SM_COUNT * BLOCKS_PER_SM)  // ~768 blocks for maximum parallelism
-#define MAX_BLOCKS 512                  // Safety cap: conservative limit to prevent GPU overflow
+#define MAX_BLOCKS 2048                  // Safety cap: conservative limit to prevent GPU overflow
 #define MIN_CHUNK_SIZE 5000             // Minimum chunk size (enables fine-grained parallelism)
 #define MAX_CHUNK_SIZE 300000           // Maximum chunk size (memory constraint)
 
@@ -69,8 +73,8 @@
 // ADAPTIVE SCHEDULING PARAMETERS
 // Controls GPU/FPGA workload distribution
 // ============================================================================
-#define GPU_SPEED_RATIO  0.6f         // Initial GPU workload ratio (0.0-1.0)
-#define FPGA_SPEED_RATIO 0.4f          // Initial FPGA workload ratio (0.0-1.0)
+#define GPU_SPEED_RATIO  0.7f         // Initial GPU workload ratio (0.0-1.0)
+#define FPGA_SPEED_RATIO 0.3f          // Initial FPGA workload ratio (0.0-1.0)
 
 #define MIN_GPU_RATIO 0.05f             // Minimum GPU ratio (always do some GPU work)
 #define MAX_GPU_RATIO 0.95f             // Maximum GPU ratio (always do some FPGA work)

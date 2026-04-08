@@ -13,8 +13,11 @@
 // ============================================================================
 // FILE PATHS
 // ============================================================================
-#define QUERY_FILE "/home/dlsu-cse/Downloads/Stress Test/stestque_256.fasta"
-#define REFERENCE_FILE "/home/dlsu-cse/Downloads/Stress Test/stestref_500M.fasta"
+#define QUERY_FILE "/home/dlsu-cse/Downloads/Stress Test/stestm10que_256.fasta"
+#define REFERENCE_FILE "/home/dlsu-cse/Downloads/Stress Test/stestm10ref_10M.fasta"
+
+//#define QUERY_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/que1_256.fasta"
+//#define REFERENCE_FILE "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/Human.fasta"
 
 // ============================================================================
 // ALGORITHM LIMITS
@@ -36,7 +39,7 @@
 #define TARGET_BLOCKS (SM_COUNT * BLOCKS_PER_SM)  // ~768 blocks
 
 #define MIN_CHUNK_SIZE 5000
-#define MAX_CHUNK_SIZE 300000
+#define MAX_CHUNK_SIZE 400000
 
 // ============================================================================
 // UTILITY MACROS

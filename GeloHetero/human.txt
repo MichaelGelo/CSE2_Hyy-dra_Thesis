@@ -1,0 +1,45 @@
+
+=== Heterogeneous GPU-FPGA Damerau-Levenshtein ===
+Loading data...
+Loaded 1 queries from /home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/que1_256.fasta
+FPGA query saved: ./fpga_splits/fpga_query0.fasta (length=256)
+Loaded 1 references from /home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/Human.fasta
+Loaded: 1 queries, 1 references
+
+========================================================================================
+[Processing Reference 1/1] GPU: 0.700 | FPGA: 0.300
+[SPLIT] Query length: 256, Overlap: 255
+[SPLIT] Reference total: 234033217, GPU portion: 163823248, FPGA start: 163822993 (FPGA length: 70210224)
+FPGA split saved: ./fpga_splits/fpga_ref0.fasta (start=163822993, length=70210224)
+
+[FPGA] Processing 1 queries for Reference 0 via TCP
+[FPGA] MemFree before allocation: 45532712 kB
+[GPU] Starting computation (Dynamic Chunk: 213311, Threshold: 213311, Threads: 256)
+[GPU] Partitioned into 769 chunks
+[GPU] Query packing: length=256, aligned=256, slots=1, total=0.2 KB
+[GPU] Packed 769 chunks (156.4 MB, avg 208.3 KB/chunk)
+[GPU] Allocating memory: 156.5 MB (Eq:0.0 + Q:0.0 + R:156.4)
+[GPU] Details: numQueries=1, numChunks=769, numOrigRefs=1
+[GPU] totalPairChunks=769, totalOrigPairs=1
+[GPU] Launching kernel: 769 blocks × 256 threads (total: 769 pairs)
+[FPGA] Total sent: 66.96 MB in 1.1665 sec → 481.49 Mbps
+[FPGA] Q0: Score=133, Lowest=108 (count=5), Time=1836.7ms
+=== FPGA Total Time for Ref 0: 1.836710 seconds ===
+[GPU] Computation complete
+[Timing] GPU: 1.7403s | FPGA: 1.8367s
+[Scheduler] Times: GPU=1.7403s, FPGA=1.8367s | Ratio: 0.700→0.710
+
+===== RESULTS =====
+
+Pair: Q1(256) Vs R1(234033217)
+Reference length: 234033217 (GPU: 163823248, FPGA: 70210224)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 108
+Lowest Score Indexes: [212842719, 212842720, 212842721, 212842722, 212842723]
+Last Score: 133
+
+===== SUMMARY =====
+Total GPU: 1.7403 s | Total FPGA: 1.8367 s
+Final ratio - GPU: 0.710 | FPGA: 0.290
+===================

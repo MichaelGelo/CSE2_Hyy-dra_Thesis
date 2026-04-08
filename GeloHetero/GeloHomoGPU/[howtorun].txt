@@ -6,7 +6,8 @@ gcc [HyDam_checker].c -o HyDam_checker &&./HyDam_checker
 
 
 nvcc -O3 -diag-suppress=177 -arch=sm_75 homocuda.cu -o homocuda && ./homocuda
-
+gcc -o fasta_to_fpga fasta_to_fpga.c -std=c99 -Wall -Wextra && ./fasta_to_fpga
+nvcc -O3 -diag-suppress=177 -arch=sm_75 cpu_utils.c finalcuda.cu -o finalcuda && ./finalcuda
 
 
 ./homocuda

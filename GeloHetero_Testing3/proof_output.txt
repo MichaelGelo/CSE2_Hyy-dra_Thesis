@@ -1,0 +1,43 @@
+
+=== Heterogeneous GPU-FPGA Damerau-Levenshtein ===
+Loading data...
+Loaded 1 queries from /home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/que1_64.fasta
+FPGA query saved: ./fpga_splits/fpga_query0.fasta (length=64)
+Loaded 1 references from /home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/Resources/Cyanobacteria.fasta
+Loaded: 1 queries, 1 references
+
+========================================================================================
+[Processing Reference 1/1] GPU: 0.700 | FPGA: 0.300
+[SPLIT] Query length: 64, Overlap: 63
+[SPLIT] Reference total: 1688963, GPU portion: 1182274, FPGA start: 1182211 (FPGA length: 506752)
+FPGA split saved: ./fpga_splits/fpga_ref0.fasta (start=1182211, length=506752)
+
+[FPGA] Processing 1 queries for Reference 0 via TCP
+[GPU] Starting computation (Dynamic Chunk: 5000, Threshold: 5000, Threads: 256)
+[GPU] Partitioned into 237 chunks
+[GPU] Query packing: length=64, aligned=128, slots=1, total=0.1 KB
+[GPU] Packed 237 chunks (1.1 MB, avg 4.9 KB/chunk)
+[GPU] Allocating memory: 1.2 MB (Eq:0.0 + Q:0.0 + R:1.1)
+[GPU] Details: numQueries=1, numChunks=237, numOrigRefs=1
+[GPU] totalPairChunks=237, totalOrigPairs=1
+[GPU] Launching kernel: 237 blocks × 256 threads (total: 237 pairs)
+[GPU] Computation complete
+[FPGA] Q0: Score=35, Lowest=22 (count=2), Time=24.5ms
+=== FPGA Total Time for Ref 0: 0.024468 seconds ===
+[Timing] GPU: 0.0146s | FPGA: 0.0245s
+[Scheduler] Times: GPU=0.0146s, FPGA=0.0245s | Ratio: 0.700→0.803
+
+===== RESULTS =====
+
+Pair: Q1(64) Vs R1(1688963)
+Reference length: 1688963 (GPU: 1182274, FPGA: 506752)
+Number of Hits: 0
+Hit Indexes: N/A
+Lowest Score: 21
+Lowest Score Indexes: [751830, 885739]
+Last Score: 35
+
+===== SUMMARY =====
+Total GPU: 0.0146 s | Total FPGA: 0.0245 s
+Final ratio - GPU: 0.803 | FPGA: 0.197
+===================
