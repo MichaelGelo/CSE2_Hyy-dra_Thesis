@@ -13,11 +13,21 @@ if "!query_folder!"=="" (
     pause
     exit /b 1
 )
+if not exist "!query_folder!\" (
+    echo Error: Query folder does not exist!
+    pause
+    exit /b 1
+)
 
 REM Ask for Reference folder
 set /p ref_folder="Enter REFERENCE folder path: "
 if "!ref_folder!"=="" (
     echo Error: Reference folder cannot be empty!
+    pause
+    exit /b 1
+)
+if not exist "!ref_folder!\" (
+    echo Error: Reference folder does not exist!
     pause
     exit /b 1
 )

@@ -11,11 +11,19 @@ if [ -z "$query_folder" ]; then
     echo "Error: Query folder cannot be empty!"
     exit 1
 fi
+if [ ! -d "$query_folder" ]; then
+    echo "Error: Query folder does not exist!"
+    exit 1
+fi
 
 # Ask for Reference folder
 read -p "Enter REFERENCE folder path: " ref_folder
 if [ -z "$ref_folder" ]; then
     echo "Error: Reference folder cannot be empty!"
+    exit 1
+fi
+if [ ! -d "$ref_folder" ]; then
+    echo "Error: Reference folder does not exist!"
     exit 1
 fi
 
