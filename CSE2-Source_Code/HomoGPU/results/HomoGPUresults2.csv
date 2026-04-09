@@ -1,0 +1,7 @@
+Homo GPU Run
+Query File,Query Length,Reference File,Reference Length,Number of Hits,Hit Indexes,Lowest Score,Lowest Score Indexes,Last Score
+que_256_1.fasta,256,ref_2M_1.fasta,2000000,0,"N/A",110,"901290",133
+que_256_1.fasta,256,ref_2M_2.fasta,2000000,0,"N/A",110,"1079071",125
+que_256_1.fasta,256,ref_2M_3.fasta,2000000,0,"N/A",110,"417692,417693",129
+que_256_1.fasta,256,ref_2M_4.fasta,2000000,0,"N/A",110,"497903,497908,497909,497910,497911,1593135",125
+que_256_1.fasta,256,ref_2M_5.fasta,2000000,0,"N/A",111,"160395,160397,1103132,1418415",132

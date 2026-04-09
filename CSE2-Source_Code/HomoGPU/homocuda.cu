@@ -289,9 +289,24 @@ static AllResults collectAllResults(
 // ============================================================================
 // MAIN ENTRY POINT
 // ============================================================================
-int main() {
+int main(int argc, char* argv[]) {
     printf("=== Hyyrö Bit-Vector Levenshtein with DYNAMIC Partitioning (GPU-only) ===\n");
     printf("=== MULTI-FILE MODE: Processing all FASTA files from folders ===\n\n");
+
+    const char* query_folder = QUERY_FOLDER;
+    const char* reference_folder = REFERENCE_FOLDER;
+
+    if (argc >= 3) {
+        query_folder = argv[1];
+        reference_folder = argv[2];
+    } else if (argc == 2) {
+        fprintf(stderr, "Usage: %s [QUERY_FOLDER REFERENCE_FOLDER]\n", argv[0]);
+        fprintf(stderr, "If no arguments are passed, defaults from config.h will be used.\n");
+        return EXIT_FAILURE;
+    }
+
+    printf("Using QUERY folder: %s\n", query_folder);
+    printf("Using REFERENCE folder: %s\n\n", reference_folder);
 
     // Create results folder
     if (!create_results_folder(RESULTS_FOLDER)) {
@@ -301,13 +316,15 @@ int main() {
 
     // Scan for query and reference files
     printf("Scanning for FASTA files...\n");
-    FastaFileList queryFiles = scan_folder_for_fasta(QUERY_FOLDER);
-    FastaFileList refFiles = scan_folder_for_fasta(REFERENCE_FOLDER);
+    FastaFileList queryFiles = scan_folder_for_fasta(query_folder);
+    FastaFileList refFiles = scan_folder_for_fasta(reference_folder);
     
     printf("Found %d query file(s) and %d reference file(s)\n\n", queryFiles.count, refFiles.count);
     
     if (queryFiles.count == 0 || refFiles.count == 0) {
         fprintf(stderr, "ERROR: No FASTA files found in specified folders\n");
+        fprintf(stderr, "QUERY folder: %s\n", query_folder);
+        fprintf(stderr, "REFERENCE folder: %s\n", reference_folder);
         return EXIT_FAILURE;
     }
 

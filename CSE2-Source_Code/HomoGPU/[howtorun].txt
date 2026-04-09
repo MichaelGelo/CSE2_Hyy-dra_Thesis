@@ -1,1 +1,8 @@
-nvcc -O3 -diag-suppress=177 -arch=sm_75 homocuda.cu -o homocuda && ./homocuda
+Linux/macOS (interactive):
+./run_hydam_checker.sh
+
+Windows (interactive):
+run_hydam_checker.bat
+
+Manual run:
+nvcc -O3 -diag-suppress=177 -arch=sm_75 homocuda.cu -o homocuda && ./homocuda <query_folder> <reference_folder>
