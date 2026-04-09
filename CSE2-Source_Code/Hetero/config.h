@@ -11,8 +11,8 @@
 // Input folders for queries and references, and output CSV path
 // ============================================================================
 
-#define QUERY_FOLDER "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/GeloHetero_Testing2/Resources/QUE"
-#define REFERENCE_FOLDER "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/GeloHetero_Testing2/Resources/REF"
+#define QUERY_FOLDER "/home/dlsu-cse/Downloads/Testing2026/Testing/quetry"
+#define REFERENCE_FOLDER "/home/dlsu-cse/Downloads/Testing2026/Testing/reftry"
 #define RESULTS_FOLDER  "results"
 #define RESULTS_CSV_FILE "results/Heteroresults2.csv"
 

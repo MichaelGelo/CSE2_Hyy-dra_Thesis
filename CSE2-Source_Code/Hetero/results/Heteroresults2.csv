@@ -1,0 +1,7 @@
+Hetero Run
+Query File,Query Length,Reference File,Reference Length,Number of Hits,Hit Indexes,Lowest Score,Lowest Score Indexes,Last Score
+que_256_1.fasta,256,ref_2M_1.fasta,2000000,0,"N/A",20,"21589052",37
+que_256_1.fasta,256,ref_2M_2.fasta,2000000,0,"N/A",20,"21589052",37
+que_256_1.fasta,256,ref_2M_3.fasta,2000000,0,"N/A",20,"21589052",37
+que_256_1.fasta,256,ref_2M_4.fasta,2000000,0,"N/A",20,"21589052",37
+que_256_1.fasta,256,ref_2M_5.fasta,2000000,0,"N/A",20,"21589052",37

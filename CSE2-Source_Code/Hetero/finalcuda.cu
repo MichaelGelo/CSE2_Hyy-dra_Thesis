@@ -338,9 +338,15 @@ void* run_hyyro_gpu(void* args) {
  *        Returns a heap-allocated string; caller must free.
  */
 static char* format_indices_csv(int* indices, int count) {
-    if (count == 0) return strdup("N/A");
+    if (count <= 0 || !indices) return strdup("N/A");
+
     // Each int is at most 11 chars + comma
-    char* buf = (char*)malloc((size_t)count * 12 + 1);
+    if ((size_t)count > (((size_t)-1) - 1u) / 12u) {
+        return strdup("N/A");
+    }
+    size_t buf_size = (size_t)count * 12u + 1u;
+    char* buf = (char*)malloc(buf_size);
+    if (!buf) return strdup("N/A");
     buf[0] = '\0';
     for (int i = 0; i < count; i++) {
         char tmp[20];
@@ -361,20 +367,45 @@ static void ensure_dir(const char* path) {
     }
 }
 
-int main() {
+int main(int argc, char** argv) {
     printf("\n=== Heterogeneous GPU-FPGA Damerau-Levenshtein ===\n");
+
+    // Runtime folder overrides (priority: argv > env > config.h defaults)
+    const char* query_folder = QUERY_FOLDER;
+    const char* reference_folder = REFERENCE_FOLDER;
+
+    if (argc > 1 && argv[1] && argv[1][0] != '\0') {
+        query_folder = argv[1];
+    } else {
+        const char* env_query = getenv("HYRRO_QUERY_FOLDER");
+        if (env_query && env_query[0] != '\0') {
+            query_folder = env_query;
+        }
+    }
+
+    if (argc > 2 && argv[2] && argv[2][0] != '\0') {
+        reference_folder = argv[2];
+    } else {
+        const char* env_ref = getenv("HYRRO_REFERENCE_FOLDER");
+        if (env_ref && env_ref[0] != '\0') {
+            reference_folder = env_ref;
+        }
+    }
+
+    printf("Query folder    : %s\n", query_folder);
+    printf("Reference folder: %s\n", reference_folder);
 
     // ========== Scan input folders ==========
     int num_query_files = 0, num_ref_files = 0;
-    char** query_files = get_files_from_folder(QUERY_FOLDER, &num_query_files);
-    char** ref_files   = get_files_from_folder(REFERENCE_FOLDER, &num_ref_files);
+    char** query_files = get_files_from_folder(query_folder, &num_query_files);
+    char** ref_files   = get_files_from_folder(reference_folder, &num_ref_files);
 
     if (!query_files || num_query_files == 0) {
-        fprintf(stderr, "No query files found in %s\n", QUERY_FOLDER);
+        fprintf(stderr, "No query files found in %s\n", query_folder);
         return EXIT_FAILURE;
     }
     if (!ref_files || num_ref_files == 0) {
-        fprintf(stderr, "No reference files found in %s\n", REFERENCE_FOLDER);
+        fprintf(stderr, "No reference files found in %s\n", reference_folder);
         return EXIT_FAILURE;
     }
 
@@ -397,7 +428,7 @@ int main() {
     // ========== Loop over every query file × reference file ==========
     for (int qf = 0; qf < num_query_files; qf++) {
         char query_path[1024];
-        snprintf(query_path, sizeof(query_path), "%s/%s", QUERY_FOLDER, query_files[qf]);
+        snprintf(query_path, sizeof(query_path), "%s/%s", query_folder, query_files[qf]);
 
         int num_queries = 0;
         char** query_seqs = load_queries_from_file(query_path, &num_queries);
@@ -412,7 +443,7 @@ int main() {
 
         for (int rf = 0; rf < num_ref_files; rf++) {
             char ref_path[1024];
-            snprintf(ref_path, sizeof(ref_path), "%s/%s", REFERENCE_FOLDER, ref_files[rf]);
+            snprintf(ref_path, sizeof(ref_path), "%s/%s", reference_folder, ref_files[rf]);
 
             int num_orig_refs = 0;
             char** orig_refs = load_references_from_file(ref_path, &num_orig_refs);
