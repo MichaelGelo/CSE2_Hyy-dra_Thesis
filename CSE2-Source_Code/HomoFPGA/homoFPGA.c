@@ -16,8 +16,9 @@
 #define MAX_SEQ_LEN 1073741824 // 10MB per sequence
 #define BUFFER_SIZE 65536
 
-#define QUERY_FOLDER "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/GeloHetero_Testing2/Resources/QUE"
-#define REFERENCE_FOLDER "/home/dlsu-cse/githubfiles/CSE2_Hyy-dra_Thesis/GeloHetero_Testing2/Resources/REF"
+#define DEFAULT_QUERY_FOLDER "/home/dlsu-cse/Downloads/Testing2026/Testing/quetry"
+#define DEFAULT_REFERENCE_FOLDER "/home/dlsu-cse/Downloads/Testing2026/Testing/reftry"
+
 #define RESULTS_FOLDER   "results"
 #define RESULTS_CSV_FILE "results/FPGAresults3.csv"
 
@@ -334,28 +335,33 @@ static char* format_indices(int* indices, int count)
 
 int main(int argc, char *argv[])
 {
-    // Optional overrides: ./fasta_to_fpga [server_ip] [port]
+    // Optional overrides:
+    //   ./homoFPGA [query_folder] [reference_folder] [server_ip] [port]
+    const char *query_folder = DEFAULT_QUERY_FOLDER;
+    const char *reference_folder = DEFAULT_REFERENCE_FOLDER;
     const char *server_ip = "192.168.2.99";
     int port = 5000;
-    if (argc > 1) server_ip = argv[1];
-    if (argc > 2) port = atoi(argv[2]);
+    if (argc > 1 && argv[1][0] != '\0') query_folder = argv[1];
+    if (argc > 2 && argv[2][0] != '\0') reference_folder = argv[2];
+    if (argc > 3 && argv[3][0] != '\0') server_ip = argv[3];
+    if (argc > 4 && argv[4][0] != '\0') port = atoi(argv[4]);
 
     printf("=== FASTA to FPGA Client ===\n");
-    printf("Query folder:  %s\n", QUERY_FOLDER);
-    printf("Ref folder:    %s\n", REFERENCE_FOLDER);
+    printf("Query folder:  %s\n", query_folder);
+    printf("Ref folder:    %s\n", reference_folder);
     printf("Server:        %s:%d\n\n", server_ip, port);
 
     // ========== Scan input folders ==========
     int num_query_files = 0, num_ref_files = 0;
-    char** query_files = get_sorted_files(QUERY_FOLDER, &num_query_files);
-    char** ref_files   = get_sorted_files(REFERENCE_FOLDER, &num_ref_files);
+    char** query_files = get_sorted_files(query_folder, &num_query_files);
+    char** ref_files   = get_sorted_files(reference_folder, &num_ref_files);
 
     if (!query_files || num_query_files == 0) {
-        fprintf(stderr, "No query files found in %s\n", QUERY_FOLDER);
+        fprintf(stderr, "No query files found in %s\n", query_folder);
         return 1;
     }
     if (!ref_files || num_ref_files == 0) {
-        fprintf(stderr, "No reference files found in %s\n", REFERENCE_FOLDER);
+        fprintf(stderr, "No reference files found in %s\n", reference_folder);
         return 1;
     }
 
@@ -379,7 +385,7 @@ int main(int argc, char *argv[])
     // ========== Full cross-product: every query file x every reference file ==========
     for (int qf = 0; qf < num_query_files; qf++) {
         char query_path[1024];
-        snprintf(query_path, sizeof(query_path), "%s/%s", QUERY_FOLDER, query_files[qf]);
+        snprintf(query_path, sizeof(query_path), "%s/%s", query_folder, query_files[qf]);
 
         SequenceList* queries = parse_fasta(query_path);
         if (!queries || queries->count == 0) {
@@ -392,7 +398,7 @@ int main(int argc, char *argv[])
 
         for (int rf = 0; rf < num_ref_files; rf++) {
             char ref_path[1024];
-            snprintf(ref_path, sizeof(ref_path), "%s/%s", REFERENCE_FOLDER, ref_files[rf]);
+            snprintf(ref_path, sizeof(ref_path), "%s/%s", reference_folder, ref_files[rf]);
 
             SequenceList* refs = parse_fasta(ref_path);
             if (!refs || refs->count == 0) {
